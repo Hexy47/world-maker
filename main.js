@@ -79,7 +79,7 @@ function initThreeJS() {
   camera.position.y = 2; // Eye level
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000); // Pitch black space
+  scene.background = new THREE.Color(0x003300); // Dark green ground
   // Removed fog so we can clearly see everything
 
   // Add Outer Space Stars (Fixed)
@@ -159,7 +159,7 @@ function initThreeJS() {
   const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 10, 10);
   floorGeometry.rotateX(-Math.PI / 2);
   const floorMaterial = new THREE.MeshLambertMaterial({ 
-    color: 0xff0000 // Changed to red
+    color: 0x003300 // Dark green
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.receiveShadow = true;
