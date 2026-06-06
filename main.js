@@ -1,85 +1,13 @@
 import * as THREE from 'three';
-import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
-import { io } from 'socket.io-client';
+import { initThreeJS } from './counter.js';
 
-let socket;
-let isGod = false;
-
-// UI Elements
-const loginScreen = document.getElementById('login-screen');
-const joinBtn = document.getElementById('join-btn');
-const usernameInput = document.getElementById('username');
-const passwordInput = document.getElementById('password');
-const uiLayer = document.getElementById('ui-layer');
-const notificationsBox = document.getElementById('notifications');
-const godInstructions = document.getElementById('god-instructions');
-const statsBox = document.getElementById('stats-box');
-const fpsCounter = document.getElementById('fps-counter');
-const resolutionCounter = document.getElementById('resolution-counter');
-
-// Three.js Globals
-let camera, scene, renderer, controls;
-let raycaster;
-const objects = []; // For collision and raycasting
-const otherPlayers = {}; // Maps socket ID to Three.js Mesh
-const blockMeshes = {}; // Maps block ID to Three.js Mesh
-
-let moveForward = false;
-let moveBackward = false;
-let moveLeft = false;
-let moveRight = false;
-let canJump = false;
-
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-const color = new THREE.Color();
-
-// Wait for login
-joinBtn.addEventListener('click', () => {
-  const name = usernameInput.value.trim();
-  const password = passwordInput.value.trim();
-  
-  socket = io();
-  
-  socket.on('connect', () => {
-    socket.emit('join', { name, password });
-  });
-
-  socket.on('init', (data) => {
-    isGod = data.isGod;
-    loginScreen.style.display = 'none';
-    uiLayer.style.display = 'block';
-    
-    if (isGod) {
-      godInstructions.style.display = 'inline';
-    }
-    
-    statsBox.style.display = 'block';
-    updateResolutionDisplay();
-
-    initThreeJS();
-    
-    // Add existing players
-    for (let id in data.players) {
-      if (id !== socket.id) {
-        addOtherPlayer(data.players[id]);
-      }
-    }
-    
-    // Add existing blocks
-    data.blocks.forEach(blockData => addBlock(blockData));
-
-    setupSocketListeners();
-    animate();
-  });
-});
-
+// Initialize Three.js scene, camera, and renderer
 function initThreeJS() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.y = 2; // Eye level
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x003300); // Dark green ground
+  scene.background = new THREE.Color(0x8B0000); // Dark red ground
   // Removed fog so we can clearly see everything
 
   // Add Outer Space Stars (Fixed)
@@ -159,7 +87,7 @@ function initThreeJS() {
   const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 10, 10);
   floorGeometry.rotateX(-Math.PI / 2);
   const floorMaterial = new THREE.MeshLambertMaterial({ 
-    color: 0x003300 // Dark green
+    color: 0x8B0000 // Dark red
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.receiveShadow = true;
