@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>God-Mode World Maker</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <!-- Login Overlay -->
+    <div id="login-screen">
+      <div class="login-box">
+        <h1>World Maker</h1>
+        <p>Enter your name to join the world.</p>
+        <input type="text" id="username" placeholder="Your Name" />
+        <input type="password" id="password" placeholder="God Password (Optional)" />
+        <button id="join-btn">Enter World</button>
+      </div>
+    </div>
+
+    <!-- Stats Overlay -->
+    <div id="stats-box" style="display: none;">
+      <div id="fps-counter">FPS: 0</div>
+      <div id="resolution-counter">Res: 0x0</div>
+    </div>
+
+    <!-- UI Overlay (crosshair, notifications) -->
+    <div id="ui-layer" style="display: none;">
+      <div id="crosshair">+</div>
+      <div id="notifications"></div>
+      <div id="instructions">
+        Click to play.<br/>
+        WASD to move, Mouse to look.<br/>
+        <span id="god-instructions" style="display: none;">Left Click to build a block.</span>
+      </div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
