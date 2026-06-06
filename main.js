@@ -159,7 +159,7 @@ function initThreeJS() {
   const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 10, 10);
   floorGeometry.rotateX(-Math.PI / 2);
   const floorMaterial = new THREE.MeshLambertMaterial({ 
-    color: 0x2d6a30 
+    color: 0xff0000 // Changed to red
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.receiveShadow = true;
