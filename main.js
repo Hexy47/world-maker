@@ -31,7 +31,7 @@ let moveLeft = false;
 let moveRight = false;
 let canJump = false;
 
-const velocity = new THREE.Vector3();
+const velocity = new THREE.Vector3(0, -10, 0);
 const direction = new THREE.Vector3();
 const color = new THREE.Color();
 
