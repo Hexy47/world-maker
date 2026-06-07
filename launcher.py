@@ -48,28 +48,49 @@ def is_change_request(msg):
     lower = msg.lower()
     return any(w in lower for w in CHANGE_WORDS)
 
-# Context injected into every aider request
-GAME_MAP_CONTEXT = """
-You are editing a game config file called game.config.js.
-This file has ONE setting per line, each with a clear unique name.
-When the user asks to change something, find its setting name and change the value.
-Do NOT edit any other file. Only edit game.config.js.
+# Read the current config file
+def read_config():
+    config_path = os.path.join(PROJECT_DIR, "game.config.js")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return f.read()
 
-The settings are:
-- SKY_COLOR          = the sky/background color (hex like 0x003300)
-- GROUND_COLOR       = the floor/ground color (hex)
-- GROUND_SIZE        = how big the world ground is
-- STAR_COUNT         = number of stars in sky
-- PLAYER_SPEED       = walk speed (number, higher = faster)
-- JUMP_HEIGHT        = jump power (number, higher = bigger jump)
-- GRAVITY            = gravity strength (number)
-- EYE_HEIGHT         = camera/player eye height
-- OTHER_PLAYER_COLOR = color of other players (hex)
-- OTHER_PLAYER_HEIGHT= height of other player shapes
-- BLOCK_COLOR        = default placed block color (hex)
-- AMBIENT_INTENSITY  = overall light brightness (0.0-1.0)
-- SUN_INTENSITY      = sunlight strength (number)
+def write_config(content):
+    config_path = os.path.join(PROJECT_DIR, "game.config.js")
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+# System prompt for the AI to interpret change requests
+CHANGE_SYSTEM_PROMPT = """You are a game config assistant. The user wants to change a setting in their game.
+
+Here is the current config file (game.config.js):
+{config}
+
+RULES:
+1. Figure out which setting the user wants to change.
+2. Figure out what the new value should be.
+3. Reply with ONLY a JSON object on a single line, nothing else.
+4. Format: {{"setting": "SETTING_NAME", "value": "NEW_VALUE", "explanation": "short description"}}
+5. For colors, use JavaScript hex like 0x228B22 (forest green), 0x1a1a2e (dark blue), etc.
+6. For numbers, just use the number like 600 or 1.5
+7. For booleans, use true or false
+8. If you genuinely cannot figure out what setting to change, reply: {{"error": "reason"}}
+
+Common color examples:
+- Normal/natural green grass: 0x228B22
+- Dark green: 0x003300
+- Light green: 0x90EE90
+- Dark blue: 0x00008B
+- Sky blue: 0x87CEEB
+- Dark red: 0x8B0000
+- White: 0xFFFFFF
+- Black: 0x000000
+- Purple: 0x4B0082
+- Orange: 0xFF4500
+- Sand/desert: 0xC2B280
+- Snow: 0xFFFAFA
+- Normal ground/earth: 0x228B22
 """
+
 class WorldMakerLauncher:
     def __init__(self):
         self.root = tk.Tk()
@@ -82,9 +103,9 @@ class WorldMakerLauncher:
         self._chat_add("sys",
             "👋 Welcome! You can ask me anything or tell me to change your game.\n\n"
             "💡 Examples:\n"
-            "  • \"make the ground blue\"\n"
+            "  • \"make the ground green\"\n"
             "  • \"what does main.js do?\"\n"
-            "  • \"add a big red cube in the middle\"\n"
+            "  • \"make the player faster\"\n"
             "  • \"how do I add more players?\"\n"
         )
 
@@ -233,6 +254,7 @@ class WorldMakerLauncher:
                          "You are a helpful assistant for a beginner game developer. "
                          "Their game is a multiplayer 3D world built with Three.js, Node.js, "
                          "Express, and Socket.io. The main game code is in main.js. "
+                         "All game settings live in game.config.js. "
                          "Keep answers short, friendly, and beginner-friendly."
                      )},
                     {"role": "user", "content": msg}
@@ -261,47 +283,91 @@ class WorldMakerLauncher:
                 f"Make sure Ollama is running. Error: {e}\n")
 
     def _apply_code_change(self, msg):
-        """Run aider targeting ONLY game.config.js."""
-        self._chat_add("warn", "🔧 Changing setting in game.config.js... (10-30 sec)\n")
+        """Ask Ollama what setting to change, then directly edit game.config.js."""
+        import re
+        self._chat_add("warn", "🔧 Thinking about what to change...\n")
         try:
-            full_msg = GAME_MAP_CONTEXT.strip() + "\n\nUser request: " + msg
-            cmd = [
-                PYTHON_EXE, "-m", "aider",
-                "--model", f"ollama/{AI_MODEL}",
-                "--yes",
-                "--no-suggest-shell-commands",
-                "--message", full_msg,
-                "game.config.js"   # ← ONLY this file, never main.js
-            ]
-            proc = subprocess.Popen(
-                cmd, cwd=PROJECT_DIR,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace"
+            # Step 1: Read current config
+            config = read_config()
+
+            # Step 2: Ask Ollama to interpret the request
+            prompt = CHANGE_SYSTEM_PROMPT.format(config=config)
+            payload = json.dumps({
+                "model": AI_MODEL,
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": msg}
+                ],
+                "stream": False,
+                "format": "json"
+            }).encode()
+            req = urllib.request.Request(
+                f"{OLLAMA_URL}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"}
             )
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line or line.startswith(">"):
-                    continue
-                low = line.lower()
-                if any(k in low for k in ["commit", "applied", "wrote", "edit", "creating"]):
-                    self._chat_add("code", f"  {line}\n")
-                elif any(k in low for k in ["error", "failed"]):
-                    self._chat_add("err", f"  {line}\n")
-                elif any(k in low for k in ["token", "cost", "git", "add ", "ollama", "model"]):
-                    pass  # skip noisy lines
-                else:
-                    self._chat_add("ai", f"  {line}\n")
-            proc.wait()
-            if proc.returncode == 0:
-                self._chat_add("ok",
-                    "✅ Done! Click 🔨 Rebuild Local Game then refresh your browser.\n")
-                self._update_git_status()
-            else:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode())
+
+            ai_text = result.get("message", {}).get("content", "")
+
+            # Step 3: Parse the JSON response
+            try:
+                change = json.loads(ai_text)
+            except:
                 self._chat_add("err",
-                    "⚠️ Couldn't apply that change. Try rephrasing it.\n"
-                    "Example: 'change GROUND_COLOR to dark blue'\n")
+                    "⚠️ AI couldn't understand the request. Try being more specific.\n"
+                    "Example: 'change the ground color to green'\n")
+                return
+
+            if "error" in change:
+                self._chat_add("err", f"⚠️ {change['error']}\n")
+                return
+
+            setting = change.get("setting", "")
+            value   = change.get("value", "")
+            explain = change.get("explanation", "")
+
+            if not setting or value == "":
+                self._chat_add("err", "⚠️ AI couldn't determine what to change.\n")
+                return
+
+            # Step 4: Find and replace the setting in game.config.js
+            # Match pattern like:  SETTING_NAME:    value,  // comment
+            pattern = re.compile(
+                r"^(\s*" + re.escape(setting) + r"\s*:\s*)(.+?)(,\s*//.*)?$",
+                re.MULTILINE
+            )
+            match = pattern.search(config)
+            if not match:
+                self._chat_add("err",
+                    f"⚠️ Could not find setting '{setting}' in game.config.js\n")
+                return
+
+            # Build new line preserving the comment
+            comment = match.group(3) if match.group(3) else ","
+            new_line = f"{match.group(1)}{value}{comment}"
+            new_config = config[:match.start()] + new_line + config[match.end():]
+
+            # Step 5: Write the file
+            write_config(new_config)
+
+            # Step 6: Git commit
+            run_cmd("git add game.config.js")
+            run_cmd(f'git commit -m "Changed {setting} to {value}"')
+
+            self._chat_add("code", f"  ✏️  {setting} → {value}\n")
+            if explain:
+                self._chat_add("ai", f"  ({explain})\n")
+            self._chat_add("ok",
+                "✅ Done! Click 🔨 Rebuild Local Game then refresh your browser.\n")
+            self._update_git_status()
+
+        except urllib.error.URLError:
+            self._chat_add("err",
+                "⚠️ Can't reach Ollama. Make sure it's running!\n")
         except Exception as e:
-            self._chat_add("err", f"Error: {e}\n")
+            self._chat_add("err", f"⚠️ Error: {e}\n")
 
     # ─────────────── ACTIONS ────────────────
     def play_local(self):
@@ -319,7 +385,6 @@ class WorldMakerLauncher:
     @threaded
     def rebuild_local(self):
         self._chat_add("warn", "\n🔨 Rebuilding local game...\n")
-        ok, out, err = run_cmd(f'"{PYTHON_EXE}" -m aider --version', timeout=5)
         ok, out, err = run_cmd("npm run build", cwd=PROJECT_DIR, timeout=60)
         if ok:
             self._chat_add("ok", "✅ Local game rebuilt! Refresh your browser to see changes.\n")
