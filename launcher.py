@@ -1,13 +1,14 @@
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext
 import subprocess
 import os
 import threading
 import webbrowser
-import time
 import urllib.request
 import urllib.error
 import json
+import tempfile
+import re
 
 # ──────────────────────────────────────────────
 # CONFIG
@@ -18,15 +19,28 @@ OLLAMA_URL  = "http://localhost:11434"
 LOCAL_URL   = "http://localhost:3000"
 PUBLIC_URL  = "https://github.com/Hexy47/world-maker"
 PYTHON_EXE  = r"C:\Users\Poije\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\python.exe"
-GAME_FILES  = "main.js server.js style.css index.html"
 
-# Keywords that suggest a code-change request vs a question
-CHANGE_WORDS = [
-    "make", "change", "add", "remove", "delete", "create", "build",
-    "set", "turn", "update", "fix", "move", "increase", "decrease",
-    "modify", "replace", "put", "give", "enable", "disable", "speed",
-    "color", "colour", "size", "bigger", "smaller", "faster", "slower"
-]
+# ──────────────────────────────────────────────
+# PROMPTS
+# ──────────────────────────────────────────────
+ROUTER_PROMPT = """You are the routing brain for a game engine launcher.
+Classify the user's request into one of three categories:
+1. "chat": The user is asking a general question (e.g. "how do I play?", "what does main.js do?")
+2. "config": The user wants to change a simple game setting (e.g. "make the ground blue", "make player faster", "change jump height").
+3. "deep": The user wants complex code changes, logic optimization, or new features (e.g. "optimize FPS", "add an inventory system", "make blocks fall with gravity").
+
+Reply ONLY with a JSON object: {"type": "chat|config|deep", "reason": "..."}
+"""
+
+CONFIG_PROMPT = """You are a game config assistant. The user wants to change a setting in game.config.js.
+Current config:
+{config}
+
+RULES:
+1. Reply with ONLY a JSON object: {{"setting": "SETTING_NAME", "value": "NEW_VALUE", "explanation": "short"}}
+2. For colors, use hex like 0x228B22. For numbers, use numbers.
+3. If unsure, reply: {{"error": "reason"}}
+"""
 
 # ──────────────────────────────────────────────
 # HELPERS
@@ -44,69 +58,38 @@ def threaded(fn):
         threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True).start()
     return wrapper
 
-def is_change_request(msg):
-    lower = msg.lower()
-    return any(w in lower for w in CHANGE_WORDS)
-
-# Read the current config file
-def read_config():
-    config_path = os.path.join(PROJECT_DIR, "game.config.js")
-    with open(config_path, "r", encoding="utf-8") as f:
+def read_file(path):
+    with open(os.path.join(PROJECT_DIR, path), "r", encoding="utf-8") as f:
         return f.read()
 
-def write_config(content):
-    config_path = os.path.join(PROJECT_DIR, "game.config.js")
-    with open(config_path, "w", encoding="utf-8") as f:
+def write_file(path, content):
+    with open(os.path.join(PROJECT_DIR, path), "w", encoding="utf-8") as f:
         f.write(content)
 
-# System prompt for the AI to interpret change requests
-CHANGE_SYSTEM_PROMPT = """You are a game config assistant. The user wants to change a setting in their game.
-
-Here is the current config file (game.config.js):
-{config}
-
-RULES:
-1. Figure out which setting the user wants to change.
-2. Figure out what the new value should be.
-3. Reply with ONLY a JSON object on a single line, nothing else.
-4. Format: {{"setting": "SETTING_NAME", "value": "NEW_VALUE", "explanation": "short description"}}
-5. For colors, use JavaScript hex like 0x228B22 (forest green), 0x1a1a2e (dark blue), etc.
-6. For numbers, just use the number like 600 or 1.5
-7. For booleans, use true or false
-8. If you genuinely cannot figure out what setting to change, reply: {{"error": "reason"}}
-
-Common color examples:
-- Normal/natural green grass: 0x228B22
-- Dark green: 0x003300
-- Light green: 0x90EE90
-- Dark blue: 0x00008B
-- Sky blue: 0x87CEEB
-- Dark red: 0x8B0000
-- White: 0xFFFFFF
-- Black: 0x000000
-- Purple: 0x4B0082
-- Orange: 0xFF4500
-- Sand/desert: 0xC2B280
-- Snow: 0xFFFAFA
-- Normal ground/earth: 0x228B22
-"""
-
+# ──────────────────────────────────────────────
+# LAUNCHER APP
+# ──────────────────────────────────────────────
 class WorldMakerLauncher:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("World Maker Engine")
-        self.root.geometry("580x840")
+        self.root.title("World Maker Ultimate AI Engine")
+        self.root.geometry("620x880")
         self.root.configure(bg="#0d0d0d")
         self.root.resizable(False, False)
+        
+        self.chat_history = []
+        self.last_restart_count = -1
+        self.is_healing = False
+
         self._build_ui()
         self._refresh_status()
         self._chat_add("sys",
-            "👋 Welcome! You can ask me anything or tell me to change your game.\n\n"
-            "💡 Examples:\n"
-            "  • \"make the ground green\"\n"
-            "  • \"what does main.js do?\"\n"
-            "  • \"make the player faster\"\n"
-            "  • \"how do I add more players?\"\n"
+            "👋 Welcome to the Ultimate AI Engine!\n\n"
+            "I have 3 Brains:\n"
+            "💬 Chat Brain: Ask me how your code works.\n"
+            "⚡ Config Brain: Say 'make the ground red' (instant).\n"
+            "🧠 Deep Brain: Say 'optimize my FPS' (I will rewrite your engine code).\n\n"
+            "Just type what you want and I will figure out which brain to use.\n"
         )
 
     # ─────────────── BUILD UI ────────────────
@@ -114,57 +97,56 @@ class WorldMakerLauncher:
         # HEADER
         tk.Label(self.root, text="⚒️  WORLD MAKER", font=("Segoe UI", 22, "bold"),
                  bg="#0d0d0d", fg="#4facfe", pady=10).pack()
-        tk.Label(self.root, text="Engine Launcher", font=("Segoe UI", 10),
+        tk.Label(self.root, text="Ultimate AI Engine Launcher", font=("Segoe UI", 10),
                  bg="#0d0d0d", fg="#444").pack()
         self._sep()
 
-        # TOP BUTTONS — row 1: Play
+        # TOP BUTTONS
         r1 = tk.Frame(self.root, bg="#0d0d0d")
         r1.pack(fill="x", padx=20, pady=(6,2))
         self._btn(r1, "🎮 Play Local",  self.play_local,  "#2563eb", side="left")
         self._btn(r1, "🌐 Play Public", self.play_public, "#0891b2", side="left")
 
-        # TOP BUTTONS — row 2: Build + Folder
         r2 = tk.Frame(self.root, bg="#0d0d0d")
         r2.pack(fill="x", padx=20, pady=2)
         self._btn(r2, "🔨 Rebuild Local Game", self.rebuild_local, "#065f46", side="left")
         self._btn(r2, "📁 Open Folder",         self.open_folder,   "#374151", side="left")
 
-        # TOP BUTTONS — row 3: Publish
         r3 = tk.Frame(self.root, bg="#0d0d0d")
         r3.pack(fill="x", padx=20, pady=(2,6))
         self.publish_btn = self._btn(r3, "🚀 Publish Update to Friends", self.publish_update, "#dc2626", full=True)
-        tk.Label(self.root, text="Push your latest code live — friends see it in ~3 mins",
-                 font=("Segoe UI", 8), bg="#0d0d0d", fg="#444").pack()
 
         self._sep()
 
         # STATUS STRIP
         sf = tk.Frame(self.root, bg="#111118", padx=14, pady=6)
         sf.pack(fill="x", padx=14)
-        self.server_lbl = tk.Label(sf, text="⏳ Checking local server...",
+        
+        self.server_lbl = tk.Label(sf, text="⏳ Server: Checking...",
                                    font=("Segoe UI", 9), bg="#111118", fg="#888", anchor="w")
         self.server_lbl.pack(fill="x")
-        self.git_lbl = tk.Label(sf, text="⏳ Checking for unpublished changes...",
+        
+        self.git_lbl = tk.Label(sf, text="⏳ Git: Checking...",
                                 font=("Segoe UI", 9), bg="#111118", fg="#888", anchor="w")
         self.git_lbl.pack(fill="x")
+        
+        self.telemetry_lbl = tk.Label(sf, text="📡 Live Game Stats: Waiting for connection...",
+                                font=("Segoe UI", 9, "bold"), bg="#111118", fg="#a78bfa", anchor="w")
+        self.telemetry_lbl.pack(fill="x", pady=(4,0))
 
         self._sep()
 
         # AI CHAT HEADER
         hdr = tk.Frame(self.root, bg="#0d0d0d")
         hdr.pack(fill="x", padx=14)
-        tk.Label(hdr, text="🤖  AI ASSISTANT", font=("Segoe UI", 11, "bold"),
+        tk.Label(hdr, text="🤖  AI CO-DEVELOPER", font=("Segoe UI", 11, "bold"),
                  bg="#0d0d0d", fg="#a78bfa").pack(side="left")
-        tk.Label(hdr, text="ask anything or say what to change",
-                 font=("Segoe UI", 9), bg="#0d0d0d", fg="#555").pack(side="left", padx=8)
 
         # CHAT DISPLAY
         self.chat = scrolledtext.ScrolledText(
-            self.root, height=16, font=("Consolas", 9),
+            self.root, height=15, font=("Consolas", 9),
             bg="#08080f", fg="#cbd5e1", insertbackground="white",
-            relief="flat", padx=10, pady=10, state="disabled",
-            wrap="word", bd=0
+            relief="flat", padx=10, pady=10, state="disabled", wrap="word", bd=0
         )
         self.chat.pack(fill="x", padx=14, pady=(4, 0))
         self.chat.tag_config("sys",    foreground="#94a3b8")
@@ -173,8 +155,7 @@ class WorldMakerLauncher:
         self.chat.tag_config("code",   foreground="#86efac", font=("Consolas", 8))
         self.chat.tag_config("ok",     foreground="#22c55e", font=("Segoe UI", 9, "bold"))
         self.chat.tag_config("err",    foreground="#f87171", font=("Segoe UI", 9, "bold"))
-        self.chat.tag_config("warn",   foreground="#fbbf24")
-        self.chat.tag_config("label",  foreground="#a78bfa", font=("Segoe UI", 9, "bold"))
+        self.chat.tag_config("warn",   foreground="#fbbf24", font=("Segoe UI", 9, "bold"))
 
         # INPUT ROW
         ir = tk.Frame(self.root, bg="#0d0d0d")
@@ -191,193 +172,256 @@ class WorldMakerLauncher:
                                   padx=14, cursor="hand2", bd=0)
         self.send_btn.pack(side="left", ipady=8)
 
-        # FOOTER
-        tk.Label(self.root, text="Built with ❤️ by Antigravity",
-                 font=("Segoe UI", 8), bg="#0d0d0d", fg="#1f1f1f").pack(side="bottom", pady=4)
-
     def _btn(self, parent, text, cmd, color, side=None, full=False):
         b = tk.Button(parent, text=text, command=cmd,
                       font=("Segoe UI", 10, "bold"), bg=color, fg="#fff",
-                      activebackground=self._lighten(color), activeforeground="#fff",
+                      activebackground=color, activeforeground="#fff",
                       relief="flat", pady=8, cursor="hand2", bd=0)
-        if full:
-            b.pack(fill="x")
-        else:
-            b.pack(side=side, fill="x", expand=True, padx=2)
+        if full: b.pack(fill="x")
+        else: b.pack(side=side, fill="x", expand=True, padx=2)
         return b
 
     def _sep(self):
         tk.Frame(self.root, bg="#1a1a2e", height=1).pack(fill="x", padx=14, pady=5)
 
-    def _lighten(self, c):
-        try:
-            r = min(255, int(c[1:3], 16)+30)
-            g = min(255, int(c[3:5], 16)+30)
-            b = min(255, int(c[5:7], 16)+30)
-            return f"#{r:02x}{g:02x}{b:02x}"
-        except: return "#555"
-
-    # ─────────────── CHAT ────────────────
     def _chat_add(self, tag, text):
         self.chat.config(state="normal")
         self.chat.insert("end", text, tag)
         self.chat.see("end")
         self.chat.config(state="disabled")
 
+    # ─────────────── CORE AI LOGIC ────────────────
+    def _call_ollama(self, messages, json_format=False):
+        payload = {"model": AI_MODEL, "messages": messages, "stream": False}
+        if json_format: payload["format"] = "json"
+        
+        req = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode())["message"]["content"]
+
     @threaded
     def _send(self):
         msg = self.entry.get().strip()
-        if not msg:
-            return
+        if not msg: return
         self.entry.delete(0, "end")
         self.send_btn.config(state="disabled", text="Thinking...")
         self.root.update_idletasks()
 
         self._chat_add("user", f"\n👤 You: {msg}\n")
+        
+        # Add to memory
+        self.chat_history.append({"role": "user", "content": msg})
 
-        if is_change_request(msg):
-            self._apply_code_change(msg)
-        else:
-            self._ask_ai_question(msg)
+        try:
+            # 1. Routing
+            route_msg = [{"role": "system", "content": ROUTER_PROMPT}, {"role": "user", "content": msg}]
+            intent_json = self._call_ollama(route_msg, json_format=True)
+            intent = json.loads(intent_json).get("type", "chat")
+            
+            if intent == "config":
+                self._apply_config(msg)
+            elif intent == "deep":
+                self._apply_deep_code(msg)
+            else:
+                self._chat_answer(msg)
+        except Exception as e:
+            self._chat_add("err", f"⚠️ Error reasoning: {e}\n")
 
         self.send_btn.config(state="normal", text="Send  ➤")
 
-    def _ask_ai_question(self, msg):
-        """Send a plain question to Ollama and stream the answer."""
-        self._chat_add("label", "🤖 AI: ")
+    def _chat_answer(self, msg):
+        self._chat_add("warn", "💬 [Chat Brain]\n")
+        sys_msg = {"role": "system", "content": "You are a helpful Three.js game dev assistant. Keep it brief."}
+        messages = [sys_msg] + self.chat_history
+        
+        reply = self._call_ollama(messages)
+        self.chat_history.append({"role": "assistant", "content": reply})
+        self._chat_add("ai", f"🤖 {reply}\n")
+
+    def _apply_config(self, msg):
+        self._chat_add("warn", "⚡ [Fast Config Brain] Editing game.config.js...\n")
         try:
-            payload = json.dumps({
-                "model": AI_MODEL,
-                "messages": [
-                    {"role": "system",
-                     "content": (
-                         "You are a helpful assistant for a beginner game developer. "
-                         "Their game is a multiplayer 3D world built with Three.js, Node.js, "
-                         "Express, and Socket.io. The main game code is in main.js. "
-                         "All game settings live in game.config.js. "
-                         "Keep answers short, friendly, and beginner-friendly."
-                     )},
-                    {"role": "user", "content": msg}
-                ],
-                "stream": True
-            }).encode()
-            req = urllib.request.Request(
-                f"{OLLAMA_URL}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                for line in resp:
-                    if line:
-                        try:
-                            chunk = json.loads(line.decode())
-                            token = chunk.get("message", {}).get("content", "")
-                            if token:
-                                self._chat_add("ai", token)
-                        except:
-                            pass
-            self._chat_add("ai", "\n")
-        except Exception as e:
-            self._chat_add("err",
-                f"⚠️ Couldn't connect to the AI.\n"
-                f"Make sure Ollama is running. Error: {e}\n")
-
-    def _apply_code_change(self, msg):
-        """Ask Ollama what setting to change, then directly edit game.config.js."""
-        import re
-        self._chat_add("warn", "🔧 Thinking about what to change...\n")
-        try:
-            # Step 1: Read current config
-            config = read_config()
-
-            # Step 2: Ask Ollama to interpret the request
-            prompt = CHANGE_SYSTEM_PROMPT.format(config=config)
-            payload = json.dumps({
-                "model": AI_MODEL,
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": msg}
-                ],
-                "stream": False,
-                "format": "json"
-            }).encode()
-            req = urllib.request.Request(
-                f"{OLLAMA_URL}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode())
-
-            ai_text = result.get("message", {}).get("content", "")
-
-            # Step 3: Parse the JSON response
-            try:
-                change = json.loads(ai_text)
-            except:
-                self._chat_add("err",
-                    "⚠️ AI couldn't understand the request. Try being more specific.\n"
-                    "Example: 'change the ground color to green'\n")
-                return
-
+            config = read_file("game.config.js")
+            prompt = CONFIG_PROMPT.format(config=config)
+            
+            result = self._call_ollama([{"role": "system", "content": prompt}, {"role": "user", "content": msg}], json_format=True)
+            change = json.loads(result)
+            
             if "error" in change:
                 self._chat_add("err", f"⚠️ {change['error']}\n")
                 return
 
-            setting = change.get("setting", "")
-            value   = change.get("value", "")
-            explain = change.get("explanation", "")
-
-            if not setting or value == "":
-                self._chat_add("err", "⚠️ AI couldn't determine what to change.\n")
-                return
-
-            # Step 4: Find and replace the setting in game.config.js
-            # Match pattern like:  SETTING_NAME:    value,  // comment
-            pattern = re.compile(
-                r"^(\s*" + re.escape(setting) + r"\s*:\s*)(.+?)(,\s*//.*)?$",
-                re.MULTILINE
-            )
+            setting, value = change.get("setting"), change.get("value")
+            
+            # Regex replace
+            pattern = re.compile(r"^(\s*" + re.escape(setting) + r"\s*:\s*)(.+?)(,\s*//.*)?$", re.MULTILINE)
             match = pattern.search(config)
             if not match:
-                self._chat_add("err",
-                    f"⚠️ Could not find setting '{setting}' in game.config.js\n")
+                self._chat_add("err", f"⚠️ Couldn't find {setting}\n")
                 return
 
-            # Build new line preserving the comment
             comment = match.group(3) if match.group(3) else ","
             new_line = f"{match.group(1)}{value}{comment}"
             new_config = config[:match.start()] + new_line + config[match.end():]
+            
+            write_file("game.config.js", new_config)
+            self._chat_add("code", f"  ✏️ {setting} → {value}\n")
+            
+            # Commit & Reload
+            run_cmd('git add game.config.js && git commit -m "Config: ' + setting + ' to ' + str(value) + '"')
+            self._auto_reload()
+            
+            self.chat_history.append({"role": "assistant", "content": f"I changed {setting} to {value}."})
+            
+        except Exception as e:
+            self._chat_add("err", f"⚠️ Config Error: {e}\n")
 
-            # Step 5: Write the file
-            write_config(new_config)
+    def _apply_deep_code(self, msg):
+        self._chat_add("warn", "🧠 [Deep Planning Brain] Reading full codebase & writing code...\n")
+        try:
+            # Build history context
+            context = "Previous chat history:\n"
+            for m in self.chat_history[-5:]:
+                context += f"{m['role'].upper()}: {m['content']}\n"
+            
+            full_msg = context + "\n\nNEW REQUEST: " + msg
 
-            # Step 6: Git commit
-            run_cmd("git add game.config.js")
-            run_cmd(f'git commit -m "Changed {setting} to {value}"')
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(full_msg)
+                msg_file = f.name
 
-            self._chat_add("code", f"  ✏️  {setting} → {value}\n")
-            if explain:
-                self._chat_add("ai", f"  ({explain})\n")
-            self._chat_add("ok",
-                "✅ Done! Click 🔨 Rebuild Local Game then refresh your browser.\n")
-            self._update_git_status()
-
-        except urllib.error.URLError:
-            self._chat_add("err",
-                "⚠️ Can't reach Ollama. Make sure it's running!\n")
+            # Run Aider with multiple files for RAG
+            cmd = [
+                "cmd", "/c", "run_aider.bat",
+                "--model", f"ollama/{AI_MODEL}",
+                "--yes", "--no-suggest-shell-commands",
+                "--message-file", msg_file,
+                "main.js", "server.js", "game.config.js"
+            ]
+            
+            proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+            
+            self._chat_add("ai", "  🔍 Scanning project files...\n")
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line or line.startswith(">"): continue
+                low = line.lower()
+                if "commit" in low or "wrote" in low or "edit" in low:
+                    self._chat_add("code", f"  🛠️ {line}\n")
+                elif "error" in low or "failed" in low:
+                    self._chat_add("err", f"  ⚠️ {line}\n")
+            proc.wait()
+            
+            if proc.returncode == 0:
+                self._chat_add("ok", "  ✅ Code updated successfully.\n")
+                self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
+                run_cmd("npm run build") # Rebuild Vite
+                self._auto_reload() # Force browser refresh
+                self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes."})
+            else:
+                self._chat_add("err", "  ⚠️ Aider hit an issue. Check the output.\n")
+                
         except Exception as e:
             self._chat_add("err", f"⚠️ Error: {e}\n")
 
-    # ─────────────── ACTIONS ────────────────
+    def _auto_reload(self):
+        try:
+            urllib.request.urlopen(f"{LOCAL_URL}/api/reload", data=b"", timeout=2)
+            self._chat_add("ok", "✅ Game Hot-Reloaded in browser!\n")
+        except:
+            self._chat_add("warn", "ℹ️ Couldn't hot-reload (is the server running?)\n")
+
+    # ─────────────── AUTO HEALING ────────────────
+    @threaded
+    def _auto_heal(self, logs):
+        if self.is_healing: return
+        self.is_healing = True
+        self._chat_add("err", "\n🚨 [SELF-HEALING] Detected server crash!\n")
+        self._chat_add("ai", "  Reading error logs and writing fix...\n")
+        
+        try:
+            msg = f"The Node server crashed with this error. Fix the code:\n\n{logs}"
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(msg)
+                msg_file = f.name
+                
+            cmd = ["cmd", "/c", "run_aider.bat", "--model", f"ollama/{AI_MODEL}", "--yes", "--no-suggest-shell-commands", "--message-file", msg_file, "server.js", "main.js"]
+            proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+            for line in proc.stdout:
+                if "wrote" in line.lower() or "commit" in line.lower():
+                    self._chat_add("code", f"  🛠️ {line.strip()}\n")
+            proc.wait()
+            
+            if proc.returncode == 0:
+                self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
+                run_cmd("npm run build")
+                self._auto_reload()
+            else:
+                self._chat_add("err", "⚠️ Couldn't auto-fix the crash. You may need to look at it manually.\n")
+        except Exception as e:
+            pass
+        finally:
+            self.is_healing = False
+
+    # ─────────────── BACKGROUND STATUS ────────────────
+    @threaded
+    def _refresh_status(self):
+        # 1. Server Status
+        try:
+            urllib.request.urlopen(LOCAL_URL + "/status", timeout=2)
+            self.server_lbl.config(text="🟢 Server: Running", fg="#22c55e")
+        except:
+            self.server_lbl.config(text="🔴 Server: Offline — Click Play Local to start", fg="#ef4444")
+            
+        # 2. Git Status
+        try:
+            ok1, uncommitted, _ = run_cmd("git status --porcelain")
+            ok2, unpushed, _    = run_cmd("git log origin/main..HEAD --oneline")
+            if uncommitted.strip() or unpushed.strip():
+                self.git_lbl.config(text="🟡 Git: You have unpublished changes", fg="#eab308")
+            else:
+                self.git_lbl.config(text="🟢 Git: Public server is up to date", fg="#22c55e")
+        except: pass
+
+        # 3. Live Telemetry
+        try:
+            resp = urllib.request.urlopen(f"{LOCAL_URL}/api/telemetry", timeout=2)
+            data = json.loads(resp.read().decode())
+            if data:
+                self.telemetry_lbl.config(text=f"📡 Live Stats — FPS: {data.get('fps',0)} | Objects: {data.get('objects',0)} | Players: {data.get('players',0)}")
+            else:
+                self.telemetry_lbl.config(text="📡 Live Game Stats: Waiting for player to connect...")
+        except:
+            self.telemetry_lbl.config(text="📡 Live Game Stats: Offline")
+
+        # 4. PM2 Crash Monitoring
+        ok, out, _ = run_cmd("pm2 jlist")
+        if ok and out:
+            try:
+                processes = json.loads(out)
+                for p in processes:
+                    if p.get("name") == "world_maker_server":
+                        restarts = p.get("pm2_env", {}).get("restart_time", 0)
+                        if self.last_restart_count != -1 and restarts > self.last_restart_count:
+                            # CRASH DETECTED! Grab logs.
+                            _, err_logs, _ = run_cmd("pm2 logs world_maker_server --err --lines 20 --nostream")
+                            self._auto_heal(err_logs)
+                        self.last_restart_count = restarts
+            except: pass
+
+        self.root.after(2000, self._refresh_status) # Faster refresh for live telemetry
+
+    # ─────────────── BUTTON ACTIONS ────────────────
     def play_local(self):
-        subprocess.Popen("pm2 start ecosystem.config.cjs", cwd=PROJECT_DIR, shell=True,
-                         creationflags=subprocess.CREATE_NO_WINDOW)
+        subprocess.Popen("pm2 start ecosystem.config.cjs", cwd=PROJECT_DIR, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
         webbrowser.open(LOCAL_URL)
 
     def play_public(self):
         webbrowser.open(PUBLIC_URL)
-        self._chat_add("sys", "\n🌐 Opened your public game link!\n")
 
     def open_folder(self):
         os.startfile(PROJECT_DIR)
@@ -387,7 +431,8 @@ class WorldMakerLauncher:
         self._chat_add("warn", "\n🔨 Rebuilding local game...\n")
         ok, out, err = run_cmd("npm run build", cwd=PROJECT_DIR, timeout=60)
         if ok:
-            self._chat_add("ok", "✅ Local game rebuilt! Refresh your browser to see changes.\n")
+            self._chat_add("ok", "✅ Local game rebuilt!\n")
+            self._auto_reload()
         else:
             self._chat_add("err", f"⚠️ Build failed:\n{err}\n")
 
@@ -397,44 +442,14 @@ class WorldMakerLauncher:
         self._chat_add("warn", "\n🚀 Publishing update to friends...\n")
         try:
             run_cmd("git add -A")
-            ok, out, _ = run_cmd("git status --porcelain")
-            if ok and out.strip():
-                run_cmd('git commit -m "Update from World Maker Launcher"')
+            run_cmd('git commit -m "Update from World Maker Launcher"')
             ok, out, err = run_cmd("git push origin main")
-            combined = (out + err).lower()
-            if ok or "up-to-date" in combined:
+            if ok or "up-to-date" in (out + err).lower():
                 self._chat_add("ok", "✅ Published! Friends will see the update in ~3 mins.\n")
-                self._update_git_status()
             else:
                 self._chat_add("err", f"⚠️ Publish failed:\n{err}\n")
-        except Exception as e:
-            self._chat_add("err", f"Error: {e}\n")
-        finally:
-            self.publish_btn.config(state="normal")
-
-    # ─────────────── STATUS ────────────────
-    @threaded
-    def _refresh_status(self):
-        # Server
-        try:
-            urllib.request.urlopen(LOCAL_URL, timeout=2)
-            self.server_lbl.config(text="🟢 Local server is running", fg="#22c55e")
-        except:
-            self.server_lbl.config(
-                text="🔴 Local server offline — click Play Local to start it", fg="#ef4444")
-        self._update_git_status()
-        self.root.after(15000, self._refresh_status)
-
-    def _update_git_status(self):
-        try:
-            ok1, uncommitted, _ = run_cmd("git status --porcelain")
-            ok2, unpushed, _    = run_cmd("git log origin/main..HEAD --oneline")
-            if (ok1 and uncommitted.strip()) or (ok2 and unpushed.strip()):
-                self.git_lbl.config(text="🟡 You have unpublished changes", fg="#eab308")
-            else:
-                self.git_lbl.config(text="🟢 Public server is up to date", fg="#22c55e")
-        except:
-            self.git_lbl.config(text="⚪ Could not check git status", fg="#555")
+        except: pass
+        finally: self.publish_btn.config(state="normal")
 
     def run(self):
         self.root.mainloop()

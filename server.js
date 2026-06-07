@@ -13,8 +13,10 @@ const io = new Server(httpServer, {
 
 // Serve static files from the 'dist' directory when we build the frontend
 app.use(express.static('dist'));
+app.use(express.json());
 
 // Game state
+let latestTelemetry = {};
 const players = {}; // { id: { id, name, isGod, position: {x,y,z}, rotation: {x,y,z} } }
 const blocks = []; // { id, position: {x,y,z}, color }
 
@@ -59,6 +61,11 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle telemetry from main.js
+  socket.on('telemetry', (data) => {
+    latestTelemetry = data;
+  });
+
   // Handle building (God Power)
   socket.on('placeBlock', (data) => {
     if (players[socket.id] && players[socket.id].isGod) {
@@ -85,6 +92,16 @@ io.on('connection', (socket) => {
 // Add a status endpoint to check if the server is running
 app.get('/status', (req, res) => {
   res.send('Server is running!');
+});
+
+// AI Launcher Endpoints
+app.post('/api/reload', (req, res) => {
+  io.emit('forceReload');
+  res.send({ success: true });
+});
+
+app.get('/api/telemetry', (req, res) => {
+  res.json(latestTelemetry);
 });
 
 const PORT = process.env.PORT || 3000;

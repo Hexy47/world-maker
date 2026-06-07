@@ -265,6 +265,10 @@ function setupSocketListeners() {
   socket.on('notification', (msg) => {
     showNotification(msg);
   });
+
+  socket.on('forceReload', () => {
+    window.location.reload();
+  });
 }
 
 function showNotification(msg) {
@@ -306,6 +310,16 @@ function animate() {
   frameCount++;
   if (time - lastFpsTime >= 1000) {
     fpsCounter.innerText = `FPS: ${frameCount}`;
+    
+    // Broadcast telemetry to the server so the AI Launcher can see it
+    if (socket && socket.connected) {
+      socket.emit('telemetry', {
+        fps: frameCount,
+        objects: scene ? scene.children.length : 0,
+        players: Object.keys(otherPlayers).length + 1
+      });
+    }
+
     frameCount = 0;
     lastFpsTime = time;
   }
