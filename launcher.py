@@ -288,48 +288,66 @@ class WorldMakerLauncher:
             for m in self.chat_history[-5:]:
                 context += f"{m['role'].upper()}: {m['content']}\n"
             
-            full_msg = context + "\n\nNEW REQUEST: " + msg
-
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(full_msg)
-                msg_file = f.name
-
-            # Run Aider with multiple files for RAG
-            cmd = [
-                "cmd", "/c", "run_aider.bat",
-                "--model", f"ollama/{AI_MODEL}",
-                "--yes", "--no-suggest-shell-commands",
-                "--no-auto-commits",
-                "--message-file", msg_file,
-                "main.js", "server.js", "game.config.js"
-            ]
+            main_code = read_file("main.js")
+            server_code = read_file("server.js")
             
-            proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+            sys_prompt = (
+                "You are an expert Three.js multiplayer game developer.\n"
+                "You are given the user's current 'main.js' and 'server.js'.\n"
+                "The user wants a complex logic change.\n"
+                "Respond with the ENTIRE updated file that needs changing (usually main.js).\n"
+                "You MUST wrap the code in ```javascript and ``` tags.\n"
+                "Do NOT use placeholders like '// rest of code here', output the FULL file.\n\n"
+                f"CURRENT main.js:\n```javascript\n{main_code}\n```\n\n"
+                f"CURRENT server.js:\n```javascript\n{server_code}\n```"
+            )
+
+            user_prompt = context + "\n\nNEW REQUEST: " + msg
+
+            payload = json.dumps({
+                "model": AI_MODEL,
+                "messages": [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "stream": True
+            }).encode()
+
+            req = urllib.request.Request(
+                f"{OLLAMA_URL}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"}
+            )
             
-            self._chat_add("ai", "  🔍 Scanning project files...\n")
-            for line in proc.stdout:
-                line = line.rstrip()
-                if not line or line.startswith(">"): continue
-                low = line.lower()
-                if "commit" in low or "wrote" in low or "edit" in low:
-                    self._chat_add("code", f"  🛠️ {line}\n")
-                elif "error" in low or "failed" in low:
-                    self._chat_add("err", f"  ⚠️ {line}\n")
-                elif "token" in low or "cost" in low or "add " in low or "model" in low:
-                    pass
+            self._chat_add("ai", "  🔍 Scanning project files & thinking...\n")
+            
+            full_response = ""
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                self._chat_add("code", "  🛠️ Writing new engine code...\n")
+                for line in resp:
+                    if line:
+                        try:
+                            chunk = json.loads(line.decode())
+                            token = chunk.get("message", {}).get("content", "")
+                            full_response += token
+                        except: pass
+            
+            # Extract code block
+            match = re.search(r"```(?:javascript|js)?(.*?)```", full_response, re.DOTALL | re.IGNORECASE)
+            if match:
+                new_code = match.group(1).strip()
+                if len(new_code) > 100: # basic sanity check
+                    write_file("main.js", new_code)
+                    self._chat_add("ok", "  ✅ Code updated successfully.\n")
+                    self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
+                    run_cmd("git add -A && git commit -m \"AI Deep Brain Update\"")
+                    run_cmd("npm run build") # Rebuild Vite
+                    self._auto_reload() # Force browser refresh
+                    self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes."})
                 else:
-                    self._chat_add("ai", f"  {line}\n")
-            proc.wait()
-            
-            if proc.returncode == 0:
-                self._chat_add("ok", "  ✅ Code updated successfully.\n")
-                self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
-                run_cmd("git add -A && git commit -m \"AI Deep Brain Update\"")
-                run_cmd("npm run build") # Rebuild Vite
-                self._auto_reload() # Force browser refresh
-                self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes."})
+                    self._chat_add("err", "  ⚠️ The AI generated an empty file. Try asking differently.\n")
             else:
-                self._chat_add("err", "  ⚠️ Aider hit an issue. Check the output.\n")
+                self._chat_add("err", "  ⚠️ The AI didn't format the code block correctly. Try again.\n")
                 
         except Exception as e:
             self._chat_add("err", f"⚠️ Error: {e}\n")
@@ -350,23 +368,54 @@ class WorldMakerLauncher:
         self._chat_add("ai", "  Reading error logs and writing fix...\n")
         
         try:
-            msg = f"The Node server crashed with this error. Fix the code:\n\n{logs}"
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(msg)
-                msg_file = f.name
-                
-            cmd = ["cmd", "/c", "run_aider.bat", "--model", f"ollama/{AI_MODEL}", "--yes", "--no-suggest-shell-commands", "--no-auto-commits", "--message-file", msg_file, "server.js", "main.js"]
-            proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
-            for line in proc.stdout:
-                if "wrote" in line.lower() or "edit" in line.lower():
-                    self._chat_add("code", f"  🛠️ {line.strip()}\n")
-            proc.wait()
+            server_code = read_file("server.js")
+            main_code = read_file("main.js")
             
-            if proc.returncode == 0:
-                self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
-                run_cmd("git add -A && git commit -m \"AI Self-Healing Update\"")
-                run_cmd("npm run build")
-                self._auto_reload()
+            sys_prompt = (
+                "You are an expert Node.js/Three.js developer fixing a crashed server.\n"
+                "The user's game server has crashed. Here is the current code:\n"
+                f"CURRENT server.js:\n```javascript\n{server_code}\n```\n\n"
+                f"CURRENT main.js:\n```javascript\n{main_code}\n```\n\n"
+                "Respond with the ENTIRE updated file that caused the crash (usually server.js).\n"
+                "You MUST wrap the code in ```javascript and ``` tags.\n"
+                "Do NOT use placeholders."
+            )
+
+            payload = json.dumps({
+                "model": AI_MODEL,
+                "messages": [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": f"The server crashed with this error:\n\n{logs}"}
+                ],
+                "stream": True
+            }).encode()
+
+            req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"})
+            
+            full_response = ""
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                for line in resp:
+                    if line:
+                        try:
+                            chunk = json.loads(line.decode())
+                            token = chunk.get("message", {}).get("content", "")
+                            full_response += token
+                        except: pass
+            
+            match = re.search(r"```(?:javascript|js)?(.*?)```", full_response, re.DOTALL | re.IGNORECASE)
+            if match:
+                new_code = match.group(1).strip()
+                if len(new_code) > 50:
+                    # Guess which file was fixed based on the content
+                    target_file = "server.js" if "express" in new_code or "socket.io" in new_code else "main.js"
+                    write_file(target_file, new_code)
+                    
+                    self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
+                    run_cmd("git add -A && git commit -m \"AI Self-Healing Update\"")
+                    run_cmd("npm run build")
+                    self._auto_reload()
+                else:
+                    self._chat_add("err", "⚠️ Couldn't auto-fix the crash. The AI generated an empty response.\n")
             else:
                 self._chat_add("err", "⚠️ Couldn't auto-fix the crash. You may need to look at it manually.\n")
         except Exception as e:
