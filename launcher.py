@@ -282,9 +282,8 @@ class WorldMakerLauncher:
             self._chat_add("err", f"⚠️ Config Error: {e}\n")
 
     def _apply_deep_code(self, msg):
-        self._chat_add("warn", "🧠 [Deep Planning Brain] Reading full codebase & writing code...\n")
+        self._chat_add("warn", "🧠 [Deep Brain] Activating Smart Agent Architecture...\n")
         try:
-            # Build history context
             context = "Previous chat history:\n"
             for m in self.chat_history[-5:]:
                 context += f"{m['role'].upper()}: {m['content']}\n"
@@ -293,62 +292,109 @@ class WorldMakerLauncher:
             server_code = read_file("server.js")
             
             sys_prompt = (
-                "You are an expert Three.js multiplayer game developer.\n"
-                "You are given the user's current 'main.js' and 'server.js'.\n"
-                "The user wants a complex logic change.\n"
-                "Respond with the ENTIRE updated file that needs changing (usually main.js).\n"
-                "You MUST wrap the code in ```javascript and ``` tags.\n"
-                "Do NOT use placeholders like '// rest of code here', output the FULL file.\n\n"
+                "You are an elite Game Engine Architect. You modify code using SEARCH/REPLACE blocks.\n\n"
+                "CRITICAL INSTRUCTIONS:\n"
+                "1. First, think step-by-step inside a <plan>...</plan> block.\n"
+                "2. Then, output your changes using SEARCH/REPLACE blocks for the target file.\n\n"
+                "FORMAT:\n"
+                "FILE: main.js\n"
+                "<<<<\n"
+                "SEARCH\n"
+                "  const oldCode = true;\n"
+                "====\n"
+                "REPLACE\n"
+                "  const newCode = false;\n"
+                ">>>>\n\n"
+                "RULES:\n"
+                "- The SEARCH block MUST perfectly match the existing code character-by-character (including whitespace)!\n"
+                "- ONLY output blocks for the exact lines that are changing. Do not output the entire file.\n\n"
                 f"CURRENT main.js:\n```javascript\n{main_code}\n```\n\n"
                 f"CURRENT server.js:\n```javascript\n{server_code}\n```"
             )
 
-            user_prompt = context + "\n\nNEW REQUEST: " + msg
+            current_prompt = context + "\n\nNEW REQUEST: " + msg
+            
+            # Agentic Loop (Max 3 attempts for self-correction)
+            for attempt in range(3):
+                payload = json.dumps({
+                    "model": AI_MODEL,
+                    "messages": [
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": current_prompt}
+                    ],
+                    "stream": True
+                }).encode()
 
-            payload = json.dumps({
-                "model": AI_MODEL,
-                "messages": [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "stream": True
-            }).encode()
-
-            req = urllib.request.Request(
-                f"{OLLAMA_URL}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            self._chat_add("ai", "  🔍 Scanning project files & thinking...\n")
-            
-            full_response = ""
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                self._chat_add("code", "  🛠️ Writing new engine code...\n")
-                for line in resp:
-                    if line:
-                        try:
-                            chunk = json.loads(line.decode())
-                            token = chunk.get("message", {}).get("content", "")
-                            full_response += token
-                        except: pass
-            
-            # Extract code block
-            match = re.search(r"```(?:javascript|js)?(.*?)```", full_response, re.DOTALL | re.IGNORECASE)
-            if match:
-                new_code = match.group(1).strip()
-                if len(new_code) > 100: # basic sanity check
-                    write_file("main.js", new_code)
-                    self._chat_add("ok", "  ✅ Code updated successfully.\n")
-                    self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
-                    run_cmd("git add -A && git commit -m \"AI Deep Brain Update\"")
-                    run_cmd("npm run build") # Rebuild Vite
-                    self._auto_reload() # Force browser refresh
-                    self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes."})
+                req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"})
+                
+                if attempt == 0:
+                    self._chat_add("ai", "  🤔 Thinking and planning logic...\n")
                 else:
-                    self._chat_add("err", "  ⚠️ The AI generated an empty file. Try asking differently.\n")
-            else:
-                self._chat_add("err", "  ⚠️ The AI didn't format the code block correctly. Try again.\n")
+                    self._chat_add("warn", f"  🔄 Self-Correction Attempt {attempt+1}/3...\n")
+                
+                full_response = ""
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    for line in resp:
+                        if line:
+                            try:
+                                chunk = json.loads(line.decode())
+                                token = chunk.get("message", {}).get("content", "")
+                                full_response += token
+                            except: pass
+                
+                self._chat_add("code", "  🛠️ Applying surgical code patches...\n")
+                
+                # Extract File and Blocks
+                # We assume main.js by default unless specified
+                target_file = "main.js"
+                if "FILE: server.js" in full_response: target_file = "server.js"
+                
+                blocks = re.finditer(r"<<<<\s*SEARCH\n(.*?)\n====\s*REPLACE\n(.*?)\n>>>>", full_response, re.DOTALL)
+                
+                file_content = read_file(target_file)
+                original_content = file_content
+                patch_success = False
+                
+                for match in blocks:
+                    search_str = match.group(1)
+                    replace_str = match.group(2)
+                    if search_str in file_content:
+                        file_content = file_content.replace(search_str, replace_str, 1)
+                        patch_success = True
+                    else:
+                        # Fallback: Try trimming trailing whitespace
+                        if search_str.strip() in file_content:
+                            file_content = file_content.replace(search_str.strip(), replace_str.strip(), 1)
+                            patch_success = True
+
+                if not patch_success:
+                    self._chat_add("err", "  ⚠️ Failed to match code block. The AI hallucinated the existing code.\n")
+                    current_prompt += f"\n\nERROR: Your SEARCH block did not match the file exactly. Please try again and copy the existing code exactly."
+                    continue
+
+                # Write file temporarily
+                write_file(target_file, file_content)
+                
+                # Automatic Syntax Guardrail
+                self._chat_add("sys", "  🛡️ Verifying syntax safety...\n")
+                syntax_check = subprocess.run(["node", "-c", target_file], capture_output=True, text=True)
+                
+                if syntax_check.returncode != 0:
+                    self._chat_add("err", "  ⚠️ Syntax Error detected! Rolling back and asking AI to self-correct.\n")
+                    write_file(target_file, original_content) # Rollback
+                    current_prompt += f"\n\nERROR: The code you wrote has a syntax error:\n{syntax_check.stderr}\nPlease fix the brackets or syntax and try again."
+                    continue # Try again!
+                
+                # If we get here, it succeeded and passed syntax!
+                self._chat_add("ok", "  ✅ Code updated successfully.\n")
+                self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
+                run_cmd("git add -A && git commit -m \"AI Deep Brain Update (Smart Agent)\"")
+                run_cmd("npm run build")
+                self._auto_reload()
+                self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes using surgical patches."})
+                return
+
+            self._chat_add("err", "  ❌ The AI failed to write working code after 3 attempts. Try rephrasing your request.\n")
                 
         except Exception as e:
             self._chat_add("err", f"⚠️ Error: {e}\n")
@@ -373,52 +419,84 @@ class WorldMakerLauncher:
             main_code = read_file("main.js")
             
             sys_prompt = (
-                "You are an expert Node.js/Three.js developer fixing a crashed server.\n"
+                "You are an elite Node.js/Three.js Architect fixing a crashed server.\n"
                 "The user's game server has crashed. Here is the current code:\n"
                 f"CURRENT server.js:\n```javascript\n{server_code}\n```\n\n"
                 f"CURRENT main.js:\n```javascript\n{main_code}\n```\n\n"
-                "Respond with the ENTIRE updated file that caused the crash (usually server.js).\n"
-                "You MUST wrap the code in ```javascript and ``` tags.\n"
-                "Do NOT use placeholders."
+                "You modify code using SEARCH/REPLACE blocks.\n"
+                "1. Think step-by-step in a <plan> block about why it crashed based on the error logs.\n"
+                "2. Output changes using SEARCH/REPLACE blocks for the file that caused the crash (usually server.js).\n"
+                "FORMAT:\n"
+                "FILE: server.js\n"
+                "<<<<\n"
+                "SEARCH\n"
+                "  old code;\n"
+                "====\n"
+                "REPLACE\n"
+                "  new code;\n"
+                ">>>>"
             )
-
-            payload = json.dumps({
-                "model": AI_MODEL,
-                "messages": [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": f"The server crashed with this error:\n\n{logs}"}
-                ],
-                "stream": True
-            }).encode()
-
-            req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"})
             
-            full_response = ""
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                for line in resp:
-                    if line:
-                        try:
-                            chunk = json.loads(line.decode())
-                            token = chunk.get("message", {}).get("content", "")
-                            full_response += token
-                        except: pass
-            
-            match = re.search(r"```(?:javascript|js)?(.*?)```", full_response, re.DOTALL | re.IGNORECASE)
-            if match:
-                new_code = match.group(1).strip()
-                if len(new_code) > 50:
-                    # Guess which file was fixed based on the content
-                    target_file = "server.js" if "express" in new_code or "socket.io" in new_code else "main.js"
-                    write_file(target_file, new_code)
-                    
-                    self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
-                    run_cmd("git add -A && git commit -m \"AI Self-Healing Update\"")
-                    run_cmd("npm run build")
-                    self._auto_reload()
-                else:
-                    self._chat_add("err", "⚠️ Couldn't auto-fix the crash. The AI generated an empty response.\n")
-            else:
-                self._chat_add("err", "⚠️ Couldn't auto-fix the crash. You may need to look at it manually.\n")
+            current_prompt = f"The server crashed with this error:\n\n{logs}"
+
+            for attempt in range(3):
+                payload = json.dumps({
+                    "model": AI_MODEL,
+                    "messages": [
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": current_prompt}
+                    ],
+                    "stream": True
+                }).encode()
+
+                req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"})
+                
+                full_response = ""
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    for line in resp:
+                        if line:
+                            try:
+                                chunk = json.loads(line.decode())
+                                token = chunk.get("message", {}).get("content", "")
+                                full_response += token
+                            except: pass
+                
+                target_file = "server.js" if "FILE: server.js" in full_response else "main.js"
+                blocks = re.finditer(r"<<<<\s*SEARCH\n(.*?)\n====\s*REPLACE\n(.*?)\n>>>>", full_response, re.DOTALL)
+                
+                file_content = read_file(target_file)
+                original_content = file_content
+                patch_success = False
+                
+                for match in blocks:
+                    search_str = match.group(1)
+                    replace_str = match.group(2)
+                    if search_str in file_content:
+                        file_content = file_content.replace(search_str, replace_str, 1)
+                        patch_success = True
+                    elif search_str.strip() in file_content:
+                        file_content = file_content.replace(search_str.strip(), replace_str.strip(), 1)
+                        patch_success = True
+
+                if not patch_success:
+                    current_prompt += f"\n\nERROR: Your SEARCH block did not match {target_file}. Try again with exact lines."
+                    continue
+
+                write_file(target_file, file_content)
+                
+                syntax_check = subprocess.run(["node", "-c", target_file], capture_output=True, text=True)
+                if syntax_check.returncode != 0:
+                    write_file(target_file, original_content)
+                    current_prompt += f"\n\nERROR: Your fix has a syntax error:\n{syntax_check.stderr}\nPlease try again."
+                    continue
+                
+                self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
+                run_cmd("git add -A && git commit -m \"AI Self-Healing Update\"")
+                run_cmd("npm run build")
+                self._auto_reload()
+                return
+
+            self._chat_add("err", "⚠️ Couldn't auto-fix the crash after 3 attempts. You may need to look at it manually.\n")
         except Exception as e:
             pass
         finally:
