@@ -409,7 +409,16 @@ class WorldMakerLauncher:
                         if self.last_restart_count != -1 and restarts > self.last_restart_count:
                             # CRASH DETECTED! Grab logs.
                             _, err_logs, _ = run_cmd("pm2 logs world_maker_server --err --lines 20 --nostream")
-                            self._auto_heal(err_logs)
+                            
+                            # PM2 watch restarts also increment restart_count. Only heal if there is a real error.
+                            real_error = False
+                            for line in err_logs.split('\n'):
+                                if line.strip() and not line.startswith("[TAILING]") and not line.startswith("C:\\"):
+                                    real_error = True
+                                    break
+                                    
+                            if real_error:
+                                self._auto_heal(err_logs)
                         self.last_restart_count = restarts
             except: pass
 
