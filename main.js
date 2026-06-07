@@ -99,26 +99,25 @@ function initThreeJS() {
 
   // The test cube has been removed.
 
-  // Sun
-  const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
-  const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+  // Natural Sun (Garry's Mod style sky)
+  const sunGeometry = new THREE.SphereGeometry(30, 32, 32);
+  const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffee }); // Bright warm light
   const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-  sun.position.set(500, 500, 500);
+  sun.position.set(500, 800, 500); // High in the sky
   scene.add(sun);
 
-  // The test cube has been removed.
-
-  const dirLight = new THREE.DirectionalLight(0xffffff, SETTINGS.SUN_INTENSITY);
-  dirLight.position.set(50, 100, 50);
+  // Directional Light matching the sun
+  const dirLight = new THREE.DirectionalLight(0xffffee, SETTINGS.SUN_INTENSITY);
+  dirLight.position.copy(sun.position);
   dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = 1024;
-  dirLight.shadow.mapSize.height = 1024;
+  dirLight.shadow.mapSize.width = 2048; // High res shadows
+  dirLight.shadow.mapSize.height = 2048;
   dirLight.shadow.camera.near = 0.5;
-  dirLight.shadow.camera.far = 500;
-  dirLight.shadow.camera.left = -50;
-  dirLight.shadow.camera.right = 50;
-  dirLight.shadow.camera.top = 50;
-  dirLight.shadow.camera.bottom = -50;
+  dirLight.shadow.camera.far = 2000;
+  dirLight.shadow.camera.left = -100;
+  dirLight.shadow.camera.right = 100;
+  dirLight.shadow.camera.top = 100;
+  dirLight.shadow.camera.bottom = -100;
   scene.add(dirLight);
 
   // Soft ambient light to fill in the shadows realistically
@@ -176,7 +175,11 @@ function initThreeJS() {
   scene.add(floor);
   objects.push(floor);
 
-  // Removed GridHelper to save on line drawing overhead on weak GPUs
+  // Garry's Mod Flatgrass Style Grid Overlay
+  const gridHelper = new THREE.GridHelper(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE / 10, 0x000000, 0x000000);
+  gridHelper.material.opacity = 0.15;
+  gridHelper.material.transparent = true;
+  scene.add(gridHelper);
 
   // Renderer with Shadows Enabled
   // Anti-aliasing disabled for massive performance boost
