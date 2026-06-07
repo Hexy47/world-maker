@@ -14,7 +14,8 @@ import re
 # CONFIG
 # ──────────────────────────────────────────────
 PROJECT_DIR = r"C:\Users\Poije\.gemini\antigravity\scratch\world_maker"
-AI_MODEL    = "qwen2.5-coder:7b"
+FAST_AI     = "qwen2.5-coder:7b"
+DEEP_AI     = "qwen2.5-coder:14b"
 OLLAMA_URL  = "http://localhost:11434"
 LOCAL_URL   = "http://localhost:3000"
 PUBLIC_URL  = "https://world-maker-p26d.onrender.com/"
@@ -192,8 +193,8 @@ class WorldMakerLauncher:
         self.chat.config(state="disabled")
 
     # ─────────────── CORE AI LOGIC ────────────────
-    def _call_ollama(self, messages, json_format=False):
-        payload = {"model": AI_MODEL, "messages": messages, "stream": False}
+    def _call_ollama(self, messages, json_format=False, model=FAST_AI):
+        payload = {"model": model, "messages": messages, "stream": False}
         if json_format: payload["format"] = "json"
         
         req = urllib.request.Request(
@@ -316,8 +317,15 @@ class WorldMakerLauncher:
             
             # Agentic Loop (Max 3 attempts for self-correction)
             for attempt in range(3):
+                if attempt == 0:
+                    model_to_use = DEEP_AI
+                    self._chat_add("ai", "  🧠 [14B Brain] Thinking and designing the architecture...\n")
+                else:
+                    model_to_use = FAST_AI
+                    self._chat_add("warn", f"  🔧 [7B Worker] Syntax Guard triggered. Auto-Correction {attempt}/2...\n")
+
                 payload = json.dumps({
-                    "model": AI_MODEL,
+                    "model": model_to_use,
                     "messages": [
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": current_prompt}
@@ -326,11 +334,6 @@ class WorldMakerLauncher:
                 }).encode()
 
                 req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"})
-                
-                if attempt == 0:
-                    self._chat_add("ai", "  🤔 Thinking and planning logic...\n")
-                else:
-                    self._chat_add("warn", f"  🔄 Self-Correction Attempt {attempt+1}/3...\n")
                 
                 full_response = ""
                 with urllib.request.urlopen(req, timeout=120) as resp:
@@ -440,8 +443,15 @@ class WorldMakerLauncher:
             current_prompt = f"The server crashed with this error:\n\n{logs}"
 
             for attempt in range(3):
+                if attempt == 0:
+                    model_to_use = DEEP_AI
+                    self._chat_add("ai", "  🧠 [14B Brain] Analyzing crash logs and writing fix...\n")
+                else:
+                    model_to_use = FAST_AI
+                    self._chat_add("warn", f"  🔧 [7B Worker] Syntax Guard triggered. Auto-Correction {attempt}/2...\n")
+
                 payload = json.dumps({
-                    "model": AI_MODEL,
+                    "model": model_to_use,
                     "messages": [
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": current_prompt}
