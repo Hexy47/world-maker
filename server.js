@@ -1,144 +1,184 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { Redis } from '@upstash/redis';
+import { startAnima } from './npc/anima.js';
+import { PERSONALITIES } from './npc/personalities.js';
 
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
-// Serve static files from the 'dist' directory when we build the frontend
 app.use(express.static('dist'));
 app.use(express.json());
 
-// Game state per room
-const latestTelemetry = {}; // Initialize latestTelemetry
+// ─── Redis (world + memory persistence) ─────────────────────────────────────
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN
+});
 
+async function loadWorldBlocks(room) {
+  try {
+    const saved = await redis.get(`world:${room}:blocks`);
+    if (saved) {
+      const blocks = typeof saved === 'string' ? JSON.parse(saved) : saved;
+      console.log(`[World] Loaded ${blocks.length} blocks for room "${room}"`);
+      return blocks;
+    }
+  } catch (e) {
+    console.log(`[World] No saved blocks for "${room}", starting fresh`);
+  }
+  return [];
+}
+
+async function saveWorldBlocks(room, blocks) {
+  try {
+    await redis.set(`world:${room}:blocks`, JSON.stringify(blocks));
+  } catch (e) {
+    console.log(`[World] Block save error: ${e.message}`);
+  }
+}
+
+// ─── Game State ──────────────────────────────────────────────────────────────
 const gameStates = {
   sandbox: { players: {}, blocks: [], latestTelemetry: {} },
-  gta: { players: {}, blocks: [], latestTelemetry: {} },
+  gta:     { players: {}, blocks: [], latestTelemetry: {} },
   shooter: { players: {}, blocks: [], latestTelemetry: {} }
 };
 
+// Load persisted blocks from Redis on startup
+async function initWorldState() {
+  for (const room of Object.keys(gameStates)) {
+    gameStates[room].blocks = await loadWorldBlocks(room);
+  }
+}
+
+// ─── Helper: get all players in a room ──────────────────────────────────────
+function getPlayersInRoom(room) {
+  if (!gameStates[room]) return [];
+  return Object.values(gameStates[room].players);
+}
+
+// ─── Socket.io ───────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   let currentRoom = null;
 
-  // Handle player login and joining a game room
   socket.on('join', (data) => {
     const { name, password, game } = data;
-    const isGod = password === 'creator'; // Simple hardcoded God password
-    
+    const isGod = password === 'creator';
+
     currentRoom = game || 'sandbox';
     if (!gameStates[currentRoom]) {
       gameStates[currentRoom] = { players: {}, blocks: [], latestTelemetry: {} };
     }
-    
+
     socket.join(currentRoom);
 
     gameStates[currentRoom].players[socket.id] = {
       id: socket.id,
       name: name || 'Guest',
-      isGod: isGod,
+      isGod,
       position: { x: 0, y: 1, z: 0 },
       rotation: { x: 0, y: 0, z: 0 }
     };
 
-    // Send the current room's world state to the new player
     socket.emit('init', {
       players: gameStates[currentRoom].players,
       blocks: gameStates[currentRoom].blocks,
       selfId: socket.id,
-      isGod: isGod
+      isGod
     });
 
-    // Notify others in the room that someone joined
     socket.to(currentRoom).emit('playerJoined', gameStates[currentRoom].players[socket.id]);
-    
-    // Broadcast a server notification only to that room
-    io.to(currentRoom).emit('notification', `${gameStates[currentRoom].players[socket.id].name} has joined the ${currentRoom} world!`);
+    io.to(currentRoom).emit('notification', `${name || 'Guest'} has entered the ${currentRoom} world!`);
   });
 
-  // Handle movement
   socket.on('move', (data) => {
-    if (currentRoom && gameStates[currentRoom].players[socket.id]) {
+    if (currentRoom && gameStates[currentRoom]?.players[socket.id]) {
       gameStates[currentRoom].players[socket.id].position = data.position;
       gameStates[currentRoom].players[socket.id].rotation = data.rotation;
-      // Send the movement to everyone else in the room
       socket.to(currentRoom).emit('playerMoved', gameStates[currentRoom].players[socket.id]);
     }
   });
 
-  // Handle telemetry from main.js
   socket.on('telemetry', (data) => {
-    if (currentRoom) {
-      gameStates[currentRoom].latestTelemetry = data;
-      latestTelemetry = { ...latestTelemetry, [currentRoom]: data }; // Update latestTelemetry with the new telemetry data
-    }
+    if (currentRoom) gameStates[currentRoom].latestTelemetry = data;
   });
 
-  // Handle building (God Power)
   socket.on('placeBlock', (data) => {
-    if (currentRoom && gameStates[currentRoom].players[socket.id] && gameStates[currentRoom].players[socket.id].isGod) {
-      const block = {
-        id: Date.now().toString() + Math.random().toString(),
-        position: data.position,
-        color: 0x888888 // Default block color for now
-      };
-      gameStates[currentRoom].blocks.push(block);
-      io.to(currentRoom).emit('blockPlaced', block);
-    }
+    const player = gameStates[currentRoom]?.players[socket.id];
+    if (!currentRoom || !player?.isGod) return;
+
+    const block = {
+      id: Date.now().toString() + Math.random().toString(),
+      position: data.position,
+      color: 0x888888
+    };
+    gameStates[currentRoom].blocks.push(block);
+    io.to(currentRoom).emit('blockPlaced', block);
+
+    // Persist to Redis immediately
+    saveWorldBlocks(currentRoom, gameStates[currentRoom].blocks);
   });
 
-  // Handle chat messages — broadcast to entire room
   socket.on('chatMessage', (data) => {
-    if (!currentRoom || !gameStates[currentRoom].players[socket.id]) return;
-    const player = gameStates[currentRoom].players[socket.id];
+    const player = gameStates[currentRoom]?.players[socket.id];
+    if (!currentRoom || !player) return;
+
     const text = String(data.text || '').trim().slice(0, 200);
     if (!text) return;
-    // Send to everyone else in the room (sender already shows it locally)
+
     socket.to(currentRoom).emit('chatMessage', {
       name: player.name,
-      text: text,
-      isGod: player.isGod
+      text,
+      isGod: player.isGod,
+      isNPC: false
     });
   });
 
-  // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
-    if (currentRoom && gameStates[currentRoom].players[socket.id]) {
+    if (currentRoom && gameStates[currentRoom]?.players[socket.id]) {
       io.to(currentRoom).emit('playerLeft', socket.id);
       delete gameStates[currentRoom].players[socket.id];
     }
   });
 });
 
-// Add a status endpoint to check if the server is running
+// ─── API Endpoints ───────────────────────────────────────────────────────────
 app.get('/status', (req, res) => {
-  res.send('Server is running!');
+  res.json({
+    status: 'running',
+    rooms: Object.fromEntries(
+      Object.entries(gameStates).map(([k, v]) => [k, Object.keys(v.players).length])
+    )
+  });
 });
 
-// AI Launcher Endpoints
 app.post('/api/reload', (req, res) => {
   io.emit('forceReload');
-  res.send({ success: true });
+  res.json({ success: true });
 });
 
-app.get('/api/telemetry', (req, res) => {
-  const room = req.query.room; // Get the room from query parameters
-  if (room && latestTelemetry[room]) {
-    res.json(latestTelemetry[room]);
-  } else {
-    res.status(404).json({ error: 'Room not found or telemetry data not available' });
-  }
-});
-
+// ─── Boot ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
+
+httpServer.listen(PORT, async () => {
   console.log(`World server running on http://localhost:${PORT}`);
+
+  // Load persisted world state from Redis
+  await initWorldState();
+
+  // Start Anima NPC brains (they run forever in the background)
+  for (const personality of PERSONALITIES) {
+    startAnima(personality, io, getPlayersInRoom)
+      .catch(e => console.log(`[${personality.name}] Brain crashed: ${e.message}`));
+  }
+
+  console.log(`[Anima] ${PERSONALITIES.length} NPCs are waking up...`);
 });

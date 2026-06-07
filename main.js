@@ -32,6 +32,7 @@ let raycaster;
 const objects = []; // For collision and raycasting
 const otherPlayers = {}; // Maps socket ID to Three.js Mesh
 const blockMeshes = {}; // Maps block ID to Three.js Mesh
+const npcMeshes = {}; // Maps NPC id to Three.js Group
 
 let moveForward = false;
 let moveBackward = false;
@@ -413,6 +414,54 @@ function addOtherPlayer(playerData) {
   otherPlayers[playerData.id] = mesh;
 }
 
+// ─── Create a glowing NPC mesh with floating name tag ───────────────────────
+function createNPCMesh(name, color) {
+  const group = new THREE.Group();
+
+  // Body (capsule-ish: cylinder + two half-spheres)
+  const bodyGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.6, 16);
+  const bodyMat = new THREE.MeshLambertMaterial({
+    color: color || 0xffffff,
+    emissive: new THREE.Color(color || 0xffffff),
+    emissiveIntensity: 0.4
+  });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.name = 'body';
+  body.position.y = 0.8;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+  const head = new THREE.Mesh(headGeo, bodyMat);
+  head.position.y = 1.9;
+  head.castShadow = true;
+  group.add(head);
+
+  // Floating name tag (canvas texture)
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.roundRect(4, 4, 248, 56, 8);
+  ctx.fill();
+  ctx.fillStyle = '#' + new THREE.Color(color || 0xffffff).getHexString();
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(name, 128, 40);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const labelGeo = new THREE.PlaneGeometry(1.5, 0.4);
+  const labelMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+  const label = new THREE.Mesh(labelGeo, labelMat);
+  label.position.y = 2.7;
+  // Label always faces camera (handled in animate loop)
+  label.name = 'nameLabel';
+  group.add(label);
+
+  return group;
+}
+
 function setupSocketListeners() {
   socket.on('playerJoined', (player) => {
     addOtherPlayer(player);
@@ -446,6 +495,29 @@ function setupSocketListeners() {
 
   socket.on('chatMessage', (data) => {
     appendChatMessage(data.name, data.text, data.isGod);
+  });
+
+  // ── NPC events ──────────────────────────────────────────────────────────
+  socket.on('npcMoved', (data) => {
+    if (!scene) return;
+    if (!npcMeshes[data.id]) {
+      npcMeshes[data.id] = createNPCMesh(data.name, data.color);
+      scene.add(npcMeshes[data.id]);
+    }
+    npcMeshes[data.id].position.set(data.position.x, data.position.y, data.position.z);
+  });
+
+  socket.on('npcSpeak', (data) => {
+    // Flash the NPC mesh briefly when they speak
+    const mesh = npcMeshes[data.id];
+    if (mesh) {
+      const body = mesh.getObjectByName('body');
+      if (body) {
+        const orig = body.material.emissiveIntensity;
+        body.material.emissiveIntensity = 2.0;
+        setTimeout(() => { body.material.emissiveIntensity = orig; }, 600);
+      }
+    }
   });
 }
 
@@ -631,6 +703,12 @@ function animate() {
     const timeSpeed = 0.0005;
     window.moonLight.position.x = Math.sin(time * timeSpeed) * 1000;
     window.moonLight.position.z = Math.cos(time * timeSpeed) * 1000;
+  }
+
+  // Billboard NPC name labels to always face camera
+  for (const id in npcMeshes) {
+    const label = npcMeshes[id].getObjectByName('nameLabel');
+    if (label && camera) label.quaternion.copy(camera.quaternion);
   }
 
   prevTime = time;
