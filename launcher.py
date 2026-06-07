@@ -17,7 +17,7 @@ PROJECT_DIR = r"C:\Users\Poije\.gemini\antigravity\scratch\world_maker"
 AI_MODEL    = "qwen2.5-coder:7b"
 OLLAMA_URL  = "http://localhost:11434"
 LOCAL_URL   = "http://localhost:3000"
-PUBLIC_URL  = "https://github.com/Hexy47/world-maker"
+PUBLIC_URL  = "https://hexy47.github.io/world-maker/"
 PYTHON_EXE  = r"C:\Users\Poije\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\python.exe"
 
 # ──────────────────────────────────────────────
