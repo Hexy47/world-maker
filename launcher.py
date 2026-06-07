@@ -299,6 +299,7 @@ class WorldMakerLauncher:
                 "cmd", "/c", "run_aider.bat",
                 "--model", f"ollama/{AI_MODEL}",
                 "--yes", "--no-suggest-shell-commands",
+                "--no-auto-commits",
                 "--message-file", msg_file,
                 "main.js", "server.js", "game.config.js"
             ]
@@ -323,6 +324,7 @@ class WorldMakerLauncher:
             if proc.returncode == 0:
                 self._chat_add("ok", "  ✅ Code updated successfully.\n")
                 self._chat_add("sys", "  🔄 Auto-rebuilding and hot-reloading game...\n")
+                run_cmd("git add -A && git commit -m \"AI Deep Brain Update\"")
                 run_cmd("npm run build") # Rebuild Vite
                 self._auto_reload() # Force browser refresh
                 self.chat_history.append({"role": "assistant", "content": "I applied the deep code changes."})
@@ -353,15 +355,16 @@ class WorldMakerLauncher:
                 f.write(msg)
                 msg_file = f.name
                 
-            cmd = ["cmd", "/c", "run_aider.bat", "--model", f"ollama/{AI_MODEL}", "--yes", "--no-suggest-shell-commands", "--message-file", msg_file, "server.js", "main.js"]
+            cmd = ["cmd", "/c", "run_aider.bat", "--model", f"ollama/{AI_MODEL}", "--yes", "--no-suggest-shell-commands", "--no-auto-commits", "--message-file", msg_file, "server.js", "main.js"]
             proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
             for line in proc.stdout:
-                if "wrote" in line.lower() or "commit" in line.lower():
+                if "wrote" in line.lower() or "edit" in line.lower():
                     self._chat_add("code", f"  🛠️ {line.strip()}\n")
             proc.wait()
             
             if proc.returncode == 0:
                 self._chat_add("ok", "✅ Crash fixed! Hot-reloading...\n")
+                run_cmd("git add -A && git commit -m \"AI Self-Healing Update\"")
                 run_cmd("npm run build")
                 self._auto_reload()
             else:
