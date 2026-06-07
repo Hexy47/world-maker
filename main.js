@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import { io } from 'socket.io-client';
+import { SETTINGS } from './game.config.js';
 
 let socket;
 let isGod = false;
@@ -76,17 +77,17 @@ joinBtn.addEventListener('click', () => {
 
 function initThreeJS() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.y = 2; // Eye level
+  camera.position.y = SETTINGS.EYE_HEIGHT;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8B0000); // Dark red ground
+  scene.background = new THREE.Color(SETTINGS.SKY_COLOR);
   // Removed fog so we can clearly see everything
 
   // Add Outer Space Stars (Fixed)
   const starGeometry = new THREE.BufferGeometry();
   const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 3.0, sizeAttenuation: false });
   const starVertices = [];
-  for(let i=0; i<5000; i++) {
+  for(let i=0; i<SETTINGS.STAR_COUNT; i++) {
     const x = THREE.MathUtils.randFloatSpread(2000);
     const y = THREE.MathUtils.randFloat(0, 500); // Lower stars so they are right in front of us
     const z = THREE.MathUtils.randFloatSpread(2000);
@@ -98,7 +99,7 @@ function initThreeJS() {
 
   // The test cube has been removed.
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  const dirLight = new THREE.DirectionalLight(0xffffff, SETTINGS.SUN_INTENSITY);
   dirLight.position.set(50, 100, 50);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.width = 1024;
@@ -112,7 +113,7 @@ function initThreeJS() {
   scene.add(dirLight);
 
   // Soft ambient light to fill in the shadows realistically
-  const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+  const ambientLight = new THREE.AmbientLight(0x404040, SETTINGS.AMBIENT_INTENSITY);
   scene.add(ambientLight);
 
   controls = new PointerLockControls(camera, document.body);
@@ -133,7 +134,7 @@ function initThreeJS() {
       case 'KeyS': moveBackward = true; break;
       case 'ArrowRight':
       case 'KeyD': moveRight = true; break;
-      case 'Space': if (canJump === true) velocity.y += 350; canJump = false; break;
+      case 'Space': if (canJump === true) velocity.y += SETTINGS.JUMP_HEIGHT; canJump = false; break;
     }
   };
 
@@ -156,10 +157,10 @@ function initThreeJS() {
   raycaster = new THREE.Raycaster();
 
   // Floor (Optimized Lambert Material)
-  const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 10, 10);
+  const floorGeometry = new THREE.PlaneGeometry(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE, 10, 10);
   floorGeometry.rotateX(-Math.PI / 2);
   const floorMaterial = new THREE.MeshLambertMaterial({ 
-    color: 0x008B00 // Dark green
+    color: SETTINGS.GROUND_COLOR
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.receiveShadow = true;
@@ -222,9 +223,9 @@ function addBlock(data) {
 }
 
 function addOtherPlayer(playerData) {
-  const geometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 32);
+  const geometry = new THREE.CylinderGeometry(0.5, 0.5, SETTINGS.OTHER_PLAYER_HEIGHT, 32);
   const material = new THREE.MeshLambertMaterial({ 
-    color: 0xff0000
+    color: SETTINGS.OTHER_PLAYER_COLOR
   }); // Shiny red for other players
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(playerData.position);
@@ -314,14 +315,14 @@ function animate() {
 
     velocity.x -= velocity.x * 10.0 * delta;
     velocity.z -= velocity.z * 10.0 * delta;
-    velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
+    velocity.y -= (SETTINGS.GRAVITY) * delta;
 
     direction.z = Number(moveForward) - Number(moveBackward);
     direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
 
-    if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
-    if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+    if (moveForward || moveBackward) velocity.z -= direction.z * SETTINGS.PLAYER_SPEED * delta;
+    if (moveLeft || moveRight) velocity.x -= direction.x * SETTINGS.PLAYER_SPEED * delta;
 
     // A simple collision check (only Y axis for jumping)
     controls.moveRight(-velocity.x * delta);
