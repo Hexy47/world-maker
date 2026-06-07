@@ -357,19 +357,30 @@ class WorldMakerLauncher:
                 
                 file_content = read_file(target_file)
                 original_content = file_content
-                patch_success = False
-                
-                for match in blocks:
-                    search_str = match.group(1)
-                    replace_str = match.group(2)
-                    if search_str in file_content:
-                        file_content = file_content.replace(search_str, replace_str, 1)
-                        patch_success = True
-                    else:
-                        # Fallback: Try trimming trailing whitespace
-                        if search_str.strip() in file_content:
+                blocks_found = list(blocks)
+                if not blocks_found:
+                    patch_success = False
+                else:
+                    patch_success = True
+                    for match in blocks_found:
+                        search_str = match.group(1)
+                        replace_str = match.group(2)
+                        
+                        # Exact match
+                        if search_str in file_content:
+                            file_content = file_content.replace(search_str, replace_str, 1)
+                        # Trimmed match
+                        elif search_str.strip() in file_content:
                             file_content = file_content.replace(search_str.strip(), replace_str.strip(), 1)
-                            patch_success = True
+                        else:
+                            # Fuzzy whitespace match
+                            import re as regex
+                            fuzzy_search = regex.sub(r'\s+', r'\\s*', regex.escape(search_str.strip()))
+                            fuzzy_match = regex.search(fuzzy_search, file_content)
+                            if fuzzy_match:
+                                file_content = file_content[:fuzzy_match.start()] + replace_str + file_content[fuzzy_match.end():]
+                            else:
+                                patch_success = False
 
                 if not patch_success:
                     self._chat_add("err", "  ⚠️ Failed to match code block. The AI hallucinated the existing code.\n")
