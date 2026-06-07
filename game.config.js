@@ -10,7 +10,7 @@ export const SETTINGS = {
   // ──────────────────────────────────────
   // 🌍 WORLD
   // ──────────────────────────────────────
-  SKY_COLOR:          0x8B0000,   // background/sky color
+  SKY_COLOR:          0x87CEEB,   // background/sky color
   GROUND_COLOR:       0,   // floor/ground color
   GROUND_SIZE:        2000,       // how big the ground plane is
   STAR_COUNT:         5000,       // number of stars in the sky
