@@ -38,7 +38,7 @@ Current config:
 
 RULES:
 1. Reply with ONLY a JSON object: {{"setting": "SETTING_NAME", "value": "NEW_VALUE", "explanation": "short"}}
-2. For colors, use hex like 0x228B22. For numbers, use numbers.
+2. For colors, use hex strings wrapped in quotes like "0x228B22" or "0x000000". For numbers, use numbers without quotes.
 3. If unsure, reply: {{"error": "reason"}}
 """
 
