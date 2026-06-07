@@ -82,6 +82,11 @@ io.on('connection', (socket) => {
   });
 });
 
+// Add a status endpoint to check if the server is running
+app.get('/status', (req, res) => {
+  res.send('Server is running!');
+});
+
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`World server running on http://localhost:${PORT}`);
