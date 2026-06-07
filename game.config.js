@@ -14,7 +14,7 @@ export const SETTINGS = {
   GROUND_COLOR:       0x3B5E2B,   // floor/ground color
   GROUND_SIZE:        2000,       // how big the ground plane is
   STAR_COUNT:         5000,       // number of stars in the sky
-  FOG_ENABLED:        True,      // set to true to add fog/haze
+  FOG_ENABLED:        true,      // set to true to add fog/haze
 
   // ──────────────────────────────────────
   // 🏃 PLAYER
