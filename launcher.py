@@ -314,6 +314,10 @@ class WorldMakerLauncher:
                     self._chat_add("code", f"  🛠️ {line}\n")
                 elif "error" in low or "failed" in low:
                     self._chat_add("err", f"  ⚠️ {line}\n")
+                elif "token" in low or "cost" in low or "add " in low or "model" in low:
+                    pass
+                else:
+                    self._chat_add("ai", f"  {line}\n")
             proc.wait()
             
             if proc.returncode == 0:
