@@ -79,7 +79,7 @@ function initThreeJS() {
   camera.position.y = 2; // Eye level
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8B0000); // Dark red ground
+  scene.background = new THREE.Color(0x8B0000); // [SKY_COLOR] Change this hex value to change the sky color
   // Removed fog so we can clearly see everything
 
   // Add Outer Space Stars (Fixed)
@@ -133,7 +133,7 @@ function initThreeJS() {
       case 'KeyS': moveBackward = true; break;
       case 'ArrowRight':
       case 'KeyD': moveRight = true; break;
-      case 'Space': if (canJump === true) velocity.y += 350; canJump = false; break;
+      case 'Space': if (canJump === true) velocity.y += 350; canJump = false; break; // [JUMP_HEIGHT] Change 350 to make jump higher or lower
     }
   };
 
@@ -159,7 +159,7 @@ function initThreeJS() {
   const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 10, 10);
   floorGeometry.rotateX(-Math.PI / 2);
   const floorMaterial = new THREE.MeshLambertMaterial({ 
-    color: 0x8B0000 // Dark red
+    color: 0x8B0000 // [GROUND_COLOR] Change this hex value to change the ground/floor color
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
   floor.receiveShadow = true;
@@ -224,8 +224,8 @@ function addBlock(data) {
 function addOtherPlayer(playerData) {
   const geometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 32);
   const material = new THREE.MeshLambertMaterial({ 
-    color: 0xff0000
-  }); // Shiny red for other players
+    color: 0xff0000 // [OTHER_PLAYER_COLOR] Change this to change what color other players appear as
+  });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(playerData.position);
   mesh.castShadow = true;
@@ -320,7 +320,7 @@ function animate() {
     direction.x = Number(moveRight) - Number(moveLeft);
     direction.normalize();
 
-    if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
+    if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta; // [PLAYER_SPEED] Change 400.0 to make player faster or slower
     if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
 
     // A simple collision check (only Y axis for jumping)
