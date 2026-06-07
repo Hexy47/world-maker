@@ -343,9 +343,10 @@ class WorldMakerLauncher:
                                 chunk = json.loads(line.decode())
                                 token = chunk.get("message", {}).get("content", "")
                                 full_response += token
+                                self._chat_add("ai", token)
                             except: pass
                 
-                self._chat_add("code", "  🛠️ Applying surgical code patches...\n")
+                self._chat_add("code", "\n  🛠️ Applying surgical code patches...\n")
                 
                 # Extract File and Blocks
                 # We assume main.js by default unless specified
@@ -469,7 +470,10 @@ class WorldMakerLauncher:
                                 chunk = json.loads(line.decode())
                                 token = chunk.get("message", {}).get("content", "")
                                 full_response += token
+                                self._chat_add("ai", token)
                             except: pass
+                
+                self._chat_add("code", "\n  🛠️ Applying surgical code patches...\n")
                 
                 target_file = "server.js" if "FILE: server.js" in full_response else "main.js"
                 blocks = re.finditer(r"<<<<\s*SEARCH\n(.*?)\n====\s*REPLACE\n(.*?)\n>>>>", full_response, re.DOTALL)
