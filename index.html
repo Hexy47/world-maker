@@ -66,13 +66,21 @@
 
     <!-- UI Overlay (crosshair, notifications) -->
     <div id="ui-layer" style="display: none;">
-      <button id="leave-btn" style="position:absolute; top:20px; left:20px; padding:10px 20px; background:#ef473a; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; pointer-events:auto; z-index:100;">Leave Game</button>
+      <button id="leave-btn" style="position:absolute; top:20px; right:20px; padding:10px 20px; background:#ef473a; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; pointer-events:auto; z-index:100;">Leave Game</button>
       <div id="crosshair">+</div>
       <div id="notifications"></div>
       <div id="instructions">
         Click to play.<br/>
-        WASD to move, Mouse to look.<br/>
+        WASD to move, Mouse to look. <strong>T</strong> = Chat.<br/>
         <span id="god-instructions" style="display: none;">Left Click to build a block.</span>
+      </div>
+
+      <!-- Universal Chat System -->
+      <div id="chat-panel">
+        <div id="chat-messages"></div>
+        <div id="chat-input-row" style="display:none;">
+          <input type="text" id="chat-input" placeholder="Type a message... (Enter to send, Esc to close)" maxlength="200" autocomplete="off" />
+        </div>
       </div>
     </div>
 

@@ -17,6 +17,14 @@ const godInstructions = document.getElementById('god-instructions');
 const statsBox = document.getElementById('stats-box');
 const fpsCounter = document.getElementById('fps-counter');
 const resolutionCounter = document.getElementById('resolution-counter');
+const chatPanel = document.getElementById('chat-panel');
+const chatMessages = document.getElementById('chat-messages');
+const chatInputRow = document.getElementById('chat-input-row');
+const chatInput = document.getElementById('chat-input');
+
+let chatOpen = false;
+let playerName = 'Guest';
+let playerIsGod = false;
 
 // Three.js Globals
 let camera, scene, renderer, controls;
@@ -43,6 +51,7 @@ let selectedGame = 'sandbox';
 joinBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim();
   if (!name) return;
+  playerName = name;
   
   hubUsername.innerText = name;
   loginScreen.style.display = 'none';
@@ -90,6 +99,7 @@ document.querySelectorAll('.play-btn').forEach(btn => {
 
     socket.on('init', (data) => {
       isGod = data.isGod;
+      playerIsGod = data.isGod;
       gameHub.style.display = 'none';
       uiLayer.style.display = 'block';
       
@@ -113,6 +123,8 @@ document.querySelectorAll('.play-btn').forEach(btn => {
       data.blocks.forEach(blockData => addBlock(blockData));
 
       setupSocketListeners();
+      initChat();
+      appendChatMessage('', `Welcome to ${selectedGame}! Press T to chat.`, false, true);
       animate();
     });
   });
@@ -431,6 +443,10 @@ function setupSocketListeners() {
   socket.on('forceReload', () => {
     window.location.reload();
   });
+
+  socket.on('chatMessage', (data) => {
+    appendChatMessage(data.name, data.text, data.isGod);
+  });
 }
 
 function showNotification(msg) {
@@ -453,11 +469,83 @@ function onWindowResize() {
 
 function updateResolutionDisplay() {
   if(resolutionCounter) {
-    // Since we forced pixel ratio to 1, we just display the CSS window size
     const w = window.innerWidth;
     const h = window.innerHeight;
     resolutionCounter.innerText = `Res: ${w}x${h}`;
   }
+}
+
+// ─── CHAT SYSTEM ─────────────────────────────────────────────────────────────
+
+function initChat() {
+  // Press T to open chat
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyT' && !chatOpen && controls && controls.isLocked) {
+      openChat();
+      e.preventDefault();
+    }
+    if (e.code === 'Enter' && chatOpen) {
+      sendChatMessage();
+      e.preventDefault();
+    }
+    if (e.code === 'Escape' && chatOpen) {
+      closeChat();
+      e.preventDefault();
+    }
+  });
+}
+
+function openChat() {
+  chatOpen = true;
+  chatInputRow.style.display = 'block';
+  chatInput.value = '';
+  // Unlock mouse so user can type freely
+  if (controls) controls.unlock();
+  // Small delay so the T keypress doesn't get typed into the input
+  setTimeout(() => chatInput.focus(), 30);
+}
+
+function closeChat() {
+  chatOpen = false;
+  chatInputRow.style.display = 'none';
+  chatInput.blur();
+}
+
+function sendChatMessage() {
+  const text = chatInput.value.trim();
+  if (!text) { closeChat(); return; }
+  // Show locally immediately
+  appendChatMessage(playerName, text, playerIsGod);
+  // Send to everyone else via the server
+  socket.emit('chatMessage', { text });
+  chatInput.value = '';
+  closeChat();
+}
+
+function appendChatMessage(name, text, isGodMsg = false, isSystem = false) {
+  const el = document.createElement('div');
+  el.className = 'chat-msg' + (isGodMsg ? ' is-god' : '') + (isSystem ? ' system-msg' : '');
+  if (isSystem) {
+    el.textContent = text;
+  } else {
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'chat-name';
+    nameSpan.textContent = (isGodMsg ? '⚡' : '') + name + ':';
+    const textSpan = document.createElement('span');
+    textSpan.className = 'chat-text';
+    textSpan.textContent = ' ' + text;
+    el.appendChild(nameSpan);
+    el.appendChild(textSpan);
+  }
+  chatMessages.appendChild(el);
+  // Auto-scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  // Fade out old messages after 30 seconds
+  setTimeout(() => {
+    el.style.transition = 'opacity 1s';
+    el.style.opacity = '0';
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 1000);
+  }, 30000);
 }
 
 let prevTime = performance.now();

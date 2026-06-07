@@ -16,6 +16,8 @@ app.use(express.static('dist'));
 app.use(express.json());
 
 // Game state per room
+const latestTelemetry = {}; // Initialize latestTelemetry
+
 const gameStates = {
   sandbox: { players: {}, blocks: [], latestTelemetry: {} },
   gta: { players: {}, blocks: [], latestTelemetry: {} },
@@ -75,6 +77,7 @@ io.on('connection', (socket) => {
   socket.on('telemetry', (data) => {
     if (currentRoom) {
       gameStates[currentRoom].latestTelemetry = data;
+      latestTelemetry = { ...latestTelemetry, [currentRoom]: data }; // Update latestTelemetry with the new telemetry data
     }
   });
 
@@ -89,6 +92,20 @@ io.on('connection', (socket) => {
       gameStates[currentRoom].blocks.push(block);
       io.to(currentRoom).emit('blockPlaced', block);
     }
+  });
+
+  // Handle chat messages — broadcast to entire room
+  socket.on('chatMessage', (data) => {
+    if (!currentRoom || !gameStates[currentRoom].players[socket.id]) return;
+    const player = gameStates[currentRoom].players[socket.id];
+    const text = String(data.text || '').trim().slice(0, 200);
+    if (!text) return;
+    // Send to everyone else in the room (sender already shows it locally)
+    socket.to(currentRoom).emit('chatMessage', {
+      name: player.name,
+      text: text,
+      isGod: player.isGod
+    });
   });
 
   // Handle disconnection
@@ -113,7 +130,12 @@ app.post('/api/reload', (req, res) => {
 });
 
 app.get('/api/telemetry', (req, res) => {
-  res.json(latestTelemetry);
+  const room = req.query.room; // Get the room from query parameters
+  if (room && latestTelemetry[room]) {
+    res.json(latestTelemetry[room]);
+  } else {
+    res.status(404).json({ error: 'Room not found or telemetry data not available' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
