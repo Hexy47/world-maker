@@ -99,6 +99,15 @@ function initThreeJS() {
 
   // The test cube has been removed.
 
+  // Sun
+  const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
+  const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+  const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+  sun.position.set(500, 500, 500);
+  scene.add(sun);
+
+  // The test cube has been removed.
+
   const dirLight = new THREE.DirectionalLight(0xffffff, SETTINGS.SUN_INTENSITY);
   dirLight.position.set(50, 100, 50);
   dirLight.castShadow = true;
