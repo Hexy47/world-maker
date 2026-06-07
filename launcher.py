@@ -26,9 +26,10 @@ PYTHON_EXE  = r"C:\Users\Poije\AppData\Local\Microsoft\WindowsApps\PythonSoftwar
 ROUTER_PROMPT = """You are the routing brain for a game engine launcher.
 Classify the user's request into one of three categories:
 1. "chat": The user is asking a general question (e.g. "how do I play?", "what does main.js do?")
-2. "config": The user wants to change a simple game setting (e.g. "make the ground blue", "make player faster", "change jump height").
-3. "deep": The user wants complex code changes, logic optimization, or new features (e.g. "optimize FPS", "add an inventory system", "make blocks fall with gravity").
+2. "config": The user EXPLICITLY wants to change an existing basic game variable (e.g. "make player faster", "change jump height", "change sky color to red").
+3. "deep": The user wants to add NEW objects to the world, change the terrain, build complex code changes, or optimize logic (e.g. "add a sun", "make a basic garrys mod world", "optimize FPS", "add an inventory system").
 
+CRITICAL: If the user asks to add something to the world that doesn't exist yet (like a sun, a grid, or terrain), you MUST choose "deep".
 Reply ONLY with a JSON object: {"type": "chat|config|deep", "reason": "..."}
 """
 
