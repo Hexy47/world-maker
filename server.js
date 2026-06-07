@@ -15,20 +15,30 @@ const io = new Server(httpServer, {
 app.use(express.static('dist'));
 app.use(express.json());
 
-// Game state
-let latestTelemetry = {};
-const players = {}; // { id: { id, name, isGod, position: {x,y,z}, rotation: {x,y,z} } }
-const blocks = []; // { id, position: {x,y,z}, color }
+// Game state per room
+const gameStates = {
+  sandbox: { players: {}, blocks: [], latestTelemetry: {} },
+  gta: { players: {}, blocks: [], latestTelemetry: {} },
+  shooter: { players: {}, blocks: [], latestTelemetry: {} }
+};
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
+  let currentRoom = null;
 
-  // Handle player login
+  // Handle player login and joining a game room
   socket.on('join', (data) => {
-    const { name, password } = data;
+    const { name, password, game } = data;
     const isGod = password === 'creator'; // Simple hardcoded God password
+    
+    currentRoom = game || 'sandbox';
+    if (!gameStates[currentRoom]) {
+      gameStates[currentRoom] = { players: {}, blocks: [], latestTelemetry: {} };
+    }
+    
+    socket.join(currentRoom);
 
-    players[socket.id] = {
+    gameStates[currentRoom].players[socket.id] = {
       id: socket.id,
       name: name || 'Guest',
       isGod: isGod,
@@ -36,55 +46,57 @@ io.on('connection', (socket) => {
       rotation: { x: 0, y: 0, z: 0 }
     };
 
-    // Send the current world state to the new player
+    // Send the current room's world state to the new player
     socket.emit('init', {
-      players: players,
-      blocks: blocks,
+      players: gameStates[currentRoom].players,
+      blocks: gameStates[currentRoom].blocks,
       selfId: socket.id,
       isGod: isGod
     });
 
-    // Notify others that someone joined
-    socket.broadcast.emit('playerJoined', players[socket.id]);
+    // Notify others in the room that someone joined
+    socket.to(currentRoom).emit('playerJoined', gameStates[currentRoom].players[socket.id]);
     
-    // Broadcast a server notification
-    io.emit('notification', `${players[socket.id].name} has joined the world!`);
+    // Broadcast a server notification only to that room
+    io.to(currentRoom).emit('notification', `${gameStates[currentRoom].players[socket.id].name} has joined the ${currentRoom} world!`);
   });
 
   // Handle movement
   socket.on('move', (data) => {
-    if (players[socket.id]) {
-      players[socket.id].position = data.position;
-      players[socket.id].rotation = data.rotation;
-      // Send the movement to everyone else
-      socket.broadcast.emit('playerMoved', players[socket.id]);
+    if (currentRoom && gameStates[currentRoom].players[socket.id]) {
+      gameStates[currentRoom].players[socket.id].position = data.position;
+      gameStates[currentRoom].players[socket.id].rotation = data.rotation;
+      // Send the movement to everyone else in the room
+      socket.to(currentRoom).emit('playerMoved', gameStates[currentRoom].players[socket.id]);
     }
   });
 
   // Handle telemetry from main.js
   socket.on('telemetry', (data) => {
-    latestTelemetry = data;
+    if (currentRoom) {
+      gameStates[currentRoom].latestTelemetry = data;
+    }
   });
 
   // Handle building (God Power)
   socket.on('placeBlock', (data) => {
-    if (players[socket.id] && players[socket.id].isGod) {
+    if (currentRoom && gameStates[currentRoom].players[socket.id] && gameStates[currentRoom].players[socket.id].isGod) {
       const block = {
         id: Date.now().toString() + Math.random().toString(),
         position: data.position,
         color: 0x888888 // Default block color for now
       };
-      blocks.push(block);
-      io.emit('blockPlaced', block);
+      gameStates[currentRoom].blocks.push(block);
+      io.to(currentRoom).emit('blockPlaced', block);
     }
   });
 
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
-    if (players[socket.id]) {
-      io.emit('playerLeft', socket.id);
-      delete players[socket.id];
+    if (currentRoom && gameStates[currentRoom].players[socket.id]) {
+      io.to(currentRoom).emit('playerLeft', socket.id);
+      delete gameStates[currentRoom].players[socket.id];
     }
   });
 });

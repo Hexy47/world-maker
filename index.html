@@ -11,10 +11,50 @@
     <div id="login-screen">
       <div class="login-box">
         <h1>World Maker</h1>
-        <p>Enter your name to join the world.</p>
+        <p>Enter your name to join the server.</p>
         <input type="text" id="username" placeholder="Your Name" />
         <input type="password" id="password" placeholder="God Password (Optional)" />
-        <button id="join-btn">Enter World</button>
+        <button id="join-btn">Connect</button>
+      </div>
+    </div>
+
+    <!-- Game Hub Overlay -->
+    <div id="game-hub" style="display: none;">
+      <div class="hub-header">
+        <h1>Welcome, <span id="hub-username">Player</span></h1>
+        <p>Select a world to enter</p>
+      </div>
+      <div class="game-grid">
+        <!-- Hero Game (Main World) -->
+        <div class="game-card hero" data-game="gta">
+          <div class="card-img gta-bg"></div>
+          <div class="card-info">
+            <h2>GTA City</h2>
+            <p>Procedural neon city with drivable cars and dynamic time of day.</p>
+            <button class="play-btn">Play Now</button>
+          </div>
+        </div>
+        
+        <!-- Side Games -->
+        <div class="side-games">
+          <div class="game-card" data-game="sandbox">
+            <div class="card-img sandbox-bg"></div>
+            <div class="card-info">
+              <h3>Flatgrass Sandbox</h3>
+              <p>Build anything with blocks in an infinite empty space.</p>
+              <button class="play-btn">Play</button>
+            </div>
+          </div>
+          
+          <div class="game-card" data-game="shooter">
+            <div class="card-img shooter-bg"></div>
+            <div class="card-info">
+              <h3>1v1 Arena</h3>
+              <p>Fast-paced hitscan PvP combat.</p>
+              <button class="play-btn">Play</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -26,6 +66,7 @@
 
     <!-- UI Overlay (crosshair, notifications) -->
     <div id="ui-layer" style="display: none;">
+      <button id="leave-btn" style="position:absolute; top:20px; left:20px; padding:10px 20px; background:#ef473a; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; pointer-events:auto; z-index:100;">Leave Game</button>
       <div id="crosshair">+</div>
       <div id="notifications"></div>
       <div id="instructions">
