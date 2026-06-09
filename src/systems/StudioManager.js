@@ -42,17 +42,7 @@ export class StudioManager {
     });
 
     this.transformControl.addEventListener('change', () => {
-      // Sync proxy transform back to  static update() {
-    if (this.isActive && this.selectedMesh) {
-      if (this.selectedIndex !== -1 && this.selectedProxy) {
-        // InstancedMesh
-        this.selectedMesh.setMatrixAt(this.selectedIndex, this.selectedProxy.matrixWorld);
-        this.selectedMesh.instanceMatrix.needsUpdate = true;
-      } else {
-        // Standard Mesh (GLTF) updates itself via TransformControls automatically
-      }
-    }
-  }
+      this.update();
     });
 
     this.scene.add(this.transformControl);
@@ -93,6 +83,18 @@ export class StudioManager {
       this.deselect();
       if (window.studioUI) window.studioUI.style.display = 'none';
       this.controls.lock();
+    }
+  }
+
+  static update() {
+    if (this.isActive && this.selectedMesh) {
+      if (this.selectedIndex !== -1 && this.selectedProxy) {
+        // InstancedMesh
+        this.selectedMesh.setMatrixAt(this.selectedIndex, this.selectedProxy.matrixWorld);
+        this.selectedMesh.instanceMatrix.needsUpdate = true;
+      } else {
+        // Standard Mesh (GLTF) updates itself via TransformControls automatically
+      }
     }
   }
 
