@@ -166,6 +166,8 @@ function initThreeJS() {
   controls = {
     isLocked: false,
     lock: () => {
+      if (window.pauseMenu) window.pauseMenu.style.display = 'none';
+      if (window.worldShiftMenu) window.worldShiftMenu.style.display = 'none';
       // RAW MOUSE INPUT: Bypasses Windows OS mouse acceleration and polling spikes
       const promise = document.body.requestPointerLock({ unadjustedMovement: true });
       if (!promise) {
@@ -179,6 +181,14 @@ function initThreeJS() {
 
   document.addEventListener('pointerlockchange', () => {
     controls.isLocked = (document.pointerLockElement === document.body);
+    
+    // NATIVE PAUSE MENU UX: When ESC is pressed, pointer unlocks natively.
+    if (!controls.isLocked && uiLayer.style.display === 'block') {
+      // Don't show pause menu if the God Menu is open
+      if (!window.worldShiftMenu || window.worldShiftMenu.style.display !== 'flex') {
+        if (window.pauseMenu) window.pauseMenu.style.display = 'flex';
+      }
+    }
   });
 
   document.body.addEventListener('click', () => {
@@ -254,13 +264,67 @@ function initThreeJS() {
 
   window.worldShiftMenu = worldShiftMenu; // Expose globally for keydown
 
+  // ─── Pause / Settings Menu (ESC Key) ────────────────────────────────────
+  const pauseMenu = document.createElement('div');
+  pauseMenu.id = 'pauseMenu';
+  pauseMenu.style.cssText = `
+    display: none;
+    position: absolute;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 10, 0.8);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    color: white; font-family: 'Inter', sans-serif;
+  `;
+  
+  const pauseTitle = document.createElement('h1');
+  pauseTitle.innerText = 'PAUSED';
+  pauseTitle.style.cssText = 'font-size: 4rem; margin-bottom: 40px; text-shadow: 0 0 20px #fff; letter-spacing: 5px;';
+  pauseMenu.appendChild(pauseTitle);
+
+  const resumeBtn = document.createElement('button');
+  resumeBtn.innerText = 'RESUME GAME';
+  resumeBtn.style.cssText = 'padding: 15px 40px; font-size: 1.5rem; background: transparent; border: 2px solid white; color: white; cursor: pointer; border-radius: 10px; margin-bottom: 30px; transition: 0.2s;';
+  resumeBtn.onmouseenter = () => { resumeBtn.style.background = 'white'; resumeBtn.style.color = 'black'; };
+  resumeBtn.onmouseleave = () => { resumeBtn.style.background = 'transparent'; resumeBtn.style.color = 'white'; };
+  resumeBtn.onclick = () => controls.lock();
+  pauseMenu.appendChild(resumeBtn);
+
+  const sensDiv = document.createElement('div');
+  sensDiv.style.cssText = 'margin: 20px 0; text-align: center; font-size: 1.2rem;';
+  sensDiv.innerHTML = 'Mouse Sensitivity <br/><br/>';
+  const sensSlider = document.createElement('input');
+  sensSlider.type = 'range';
+  sensSlider.min = '0.0001';
+  sensSlider.max = '0.01';
+  sensSlider.step = '0.0001';
+  sensSlider.value = SETTINGS.SENSITIVITY;
+  sensSlider.style.width = '300px';
+  sensSlider.oninput = (e) => { SETTINGS.SENSITIVITY = parseFloat(e.target.value); };
+  sensDiv.appendChild(sensSlider);
+  pauseMenu.appendChild(sensDiv);
+
+  const disconnectBtn = document.createElement('button');
+  disconnectBtn.innerText = 'DISCONNECT';
+  disconnectBtn.style.cssText = 'padding: 10px 30px; font-size: 1.2rem; background: transparent; border: 2px solid #ff3333; color: #ff3333; cursor: pointer; border-radius: 10px; margin-top: 50px; transition: 0.2s;';
+  disconnectBtn.onmouseenter = () => { disconnectBtn.style.background = '#ff3333'; disconnectBtn.style.color = 'white'; };
+  disconnectBtn.onmouseleave = () => { disconnectBtn.style.background = 'transparent'; disconnectBtn.style.color = '#ff3333'; };
+  disconnectBtn.onclick = () => window.location.reload(); 
+  pauseMenu.appendChild(disconnectBtn);
+
+  document.body.appendChild(pauseMenu);
+  window.pauseMenu = pauseMenu;
+
   // Hotkeys not handled by Input.js movement bindings
   document.addEventListener('keydown', (event) => {
     if (chatOpen) return;
     if (event.code === 'KeyP' && playerIsGod) {
       toggleGodPanel();
     }
-    if (event.code === 'KeyM' && playerIsGod) {
+    if (event.code === 'KeyQ' && playerIsGod) {
       if (window.worldShiftMenu.style.display === 'flex') {
         window.worldShiftMenu.style.display = 'none';
         controls.lock();
@@ -269,9 +333,6 @@ function initThreeJS() {
         controls.unlock();
       }
     }
-    if (event.code === 'Digit1') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'sim' }));
-    if (event.code === 'Digit2') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'sandbox' }));
-    if (event.code === 'Digit3') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'lab' }));
   });
   
   window.addEventListener('shiftWorld', (e) => {
@@ -465,10 +526,10 @@ function loadGTAWorld() {
   worldGroup.add(floor);
   objects.push(floor);
 
-  // Procedural City Generation (Optimized with InstancedMesh)
+  // Procedural City Generation (Expanded 3x size)
   const blockSize = 40;
   const roadWidth = 10;
-  const cityExtent = 400;
+  const cityExtent = 1200; // Was 400. This makes the city absolutely massive.
 
   // Pre-calculate buildings to instantiate
   const buildingData = [];

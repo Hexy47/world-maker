@@ -24,6 +24,7 @@ export const SETTINGS = {
   PLAYER_SPEED:           8,          // walk speed in m/s (real units now)
   PLAYER_SPRINT_MULT:     1.8,        // hold Shift to multiply speed by this
   EYE_HEIGHT:             1.7,        // camera height in meters
+  SENSITIVITY:            0.002,      // mouse look sensitivity
 
   // ──────────────────────────────────────
   // ⚙️ PHYSICS (Rapier real-world units: meters, seconds)

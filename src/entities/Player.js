@@ -40,7 +40,7 @@ export class Player {
   fixedUpdate(fixedDelta) {
     // 1. Handle Custom Mouse Look (from clamped Input system)
     const mouseDelta = Input.consumeMouseDelta();
-    const sensitivity = 0.002;
+    const sensitivity = SETTINGS.SENSITIVITY;
     
     this.yaw -= mouseDelta.x * sensitivity;
     this.pitch -= mouseDelta.y * sensitivity;
