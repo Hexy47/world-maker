@@ -191,8 +191,13 @@ function initThreeJS() {
     }
   });
 
-  document.body.addEventListener('click', () => {
-    if (uiLayer.style.display === 'block') controls.lock();
+  document.body.addEventListener('click', (e) => {
+    // Only auto-lock if we aren't clicking inside a menu
+    if (uiLayer.style.display === 'block') {
+      if (window.pauseMenu && window.pauseMenu.style.display === 'flex') return;
+      if (window.worldShiftMenu && window.worldShiftMenu.style.display === 'flex') return;
+      controls.lock();
+    }
   });
 
   // ─── World Shift Menu (God Mode) ───────────────────────────────────────────
@@ -264,57 +269,118 @@ function initThreeJS() {
 
   window.worldShiftMenu = worldShiftMenu; // Expose globally for keydown
 
-  // ─── Live Settings Menu (ESC Key) ────────────────────────────────────
+  // ─── Polished AAA Settings Menu (ESC Key) ────────────────────────────────────
   const pauseMenu = document.createElement('div');
   pauseMenu.id = 'pauseMenu';
   pauseMenu.style.cssText = `
-    display: none;
-    position: absolute;
-    top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(0, 0, 10, 0.3); /* Translucent so the live world is visible */
-    backdrop-filter: blur(4px);
-    z-index: 2000;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-    color: white; font-family: 'Inter', sans-serif;
+    display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(5px); z-index: 2000;
   `;
   
+  // Clicking the empty blurred background closes the menu
+  pauseMenu.addEventListener('click', (e) => {
+    if (e.target === pauseMenu) controls.lock();
+  });
+
+  const sidebar = document.createElement('div');
+  sidebar.style.cssText = `
+    position: absolute; left: 0; top: 0; height: 100vh; width: 450px;
+    background: linear-gradient(90deg, rgba(10,15,30,0.98) 0%, rgba(10,15,30,0.85) 100%);
+    border-right: 1px solid rgba(0, 150, 255, 0.2);
+    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.8);
+    display: flex; flex-direction: column; padding: 60px 40px;
+    font-family: 'Inter', sans-serif; color: white;
+  `;
+  sidebar.addEventListener('click', (e) => e.stopPropagation());
+
   const pauseTitle = document.createElement('h1');
   pauseTitle.innerText = 'SETTINGS';
-  pauseTitle.style.cssText = 'font-size: 3rem; margin-bottom: 40px; text-shadow: 0 0 20px #00aaff; letter-spacing: 5px;';
-  pauseMenu.appendChild(pauseTitle);
+  pauseTitle.style.cssText = 'font-size: 2.5rem; margin-bottom: 50px; color: #00aaff; letter-spacing: 4px; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;';
+  sidebar.appendChild(pauseTitle);
 
-  const resumeBtn = document.createElement('button');
-  resumeBtn.innerText = 'CLOSE MENU';
-  resumeBtn.style.cssText = 'padding: 15px 40px; font-size: 1.5rem; background: transparent; border: 2px solid white; color: white; cursor: pointer; border-radius: 10px; margin-bottom: 30px; transition: 0.2s;';
-  resumeBtn.onmouseenter = () => { resumeBtn.style.background = 'white'; resumeBtn.style.color = 'black'; };
-  resumeBtn.onmouseleave = () => { resumeBtn.style.background = 'transparent'; resumeBtn.style.color = 'white'; };
-  resumeBtn.onclick = () => controls.lock();
-  pauseMenu.appendChild(resumeBtn);
-
+  // -- Sensitivity Setting --
   const sensDiv = document.createElement('div');
-  sensDiv.style.cssText = 'margin: 20px 0; text-align: center; font-size: 1.2rem;';
-  sensDiv.innerHTML = 'Mouse Sensitivity <br/><br/>';
+  sensDiv.style.cssText = 'margin-bottom: 40px;';
+  
+  const sensLabel = document.createElement('div');
+  sensLabel.innerText = 'MOUSE SENSITIVITY';
+  sensLabel.style.cssText = 'font-size: 0.9rem; color: #888; letter-spacing: 2px; margin-bottom: 10px; font-weight: bold;';
+  sensDiv.appendChild(sensLabel);
+
   const sensSlider = document.createElement('input');
   sensSlider.type = 'range';
   sensSlider.min = '0.0001';
   sensSlider.max = '0.01';
   sensSlider.step = '0.0001';
   sensSlider.value = SETTINGS.SENSITIVITY;
-  sensSlider.style.width = '300px';
-  sensSlider.oninput = (e) => { SETTINGS.SENSITIVITY = parseFloat(e.target.value); };
+  sensSlider.style.cssText = 'width: 100%; cursor: pointer; accent-color: #00aaff;';
+  
+  const sensValue = document.createElement('div');
+  sensValue.innerText = SETTINGS.SENSITIVITY.toFixed(4);
+  sensValue.style.cssText = 'font-size: 1rem; color: #fff; margin-top: 5px; text-align: right; font-family: monospace;';
+
+  sensSlider.oninput = (e) => { 
+    SETTINGS.SENSITIVITY = parseFloat(e.target.value); 
+    sensValue.innerText = SETTINGS.SENSITIVITY.toFixed(4);
+  };
+
   sensDiv.appendChild(sensSlider);
-  pauseMenu.appendChild(sensDiv);
+  sensDiv.appendChild(sensValue);
+  sidebar.appendChild(sensDiv);
+
+  // -- Graphics Setting --
+  const neonDiv = document.createElement('div');
+  neonDiv.style.cssText = 'margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center; width: 100%;';
+  
+  const neonLabel = document.createElement('div');
+  neonLabel.innerText = 'NEON EFFECTS';
+  neonLabel.style.cssText = 'font-size: 0.9rem; color: #888; letter-spacing: 2px; font-weight: bold;';
+  
+  const neonBtn = document.createElement('button');
+  neonBtn.innerText = 'ON';
+  neonBtn.style.cssText = 'padding: 5px 15px; background: rgba(0, 170, 255, 0.2); border: 1px solid #00aaff; color: #00aaff; cursor: pointer; font-weight: bold; transition: 0.2s;';
+  neonBtn.onclick = () => {
+    const isOn = neonBtn.innerText === 'ON';
+    neonBtn.innerText = isOn ? 'OFF' : 'ON';
+    neonBtn.style.color = isOn ? '#fff' : '#00aaff';
+    neonBtn.style.border = isOn ? '1px solid #555' : '1px solid #00aaff';
+    
+    // Toggle visibility of the neon instanced mesh
+    import('./src/systems/WorldManager.js').then(wm => {
+      wm.worldGroup.children.forEach(c => {
+        if (c.isInstancedMesh && c.material.emissiveIntensity > 0) {
+          c.visible = !isOn;
+        }
+      });
+    });
+  };
+  neonDiv.appendChild(neonLabel);
+  neonDiv.appendChild(neonBtn);
+  sidebar.appendChild(neonDiv);
+
+  // Spacer
+  const spacer = document.createElement('div');
+  spacer.style.flexGrow = '1';
+  sidebar.appendChild(spacer);
+
+  // -- Buttons --
+  const resumeBtn = document.createElement('button');
+  resumeBtn.innerText = 'RESUME';
+  resumeBtn.style.cssText = 'padding: 15px; font-size: 1rem; font-weight: bold; letter-spacing: 2px; background: rgba(0, 170, 255, 0.1); border: 1px solid #00aaff; color: #00aaff; cursor: pointer; margin-bottom: 15px; transition: 0.2s;';
+  resumeBtn.onmouseenter = () => { resumeBtn.style.background = '#00aaff'; resumeBtn.style.color = '#000'; };
+  resumeBtn.onmouseleave = () => { resumeBtn.style.background = 'rgba(0, 170, 255, 0.1)'; resumeBtn.style.color = '#00aaff'; };
+  resumeBtn.onclick = () => controls.lock();
+  sidebar.appendChild(resumeBtn);
 
   const disconnectBtn = document.createElement('button');
   disconnectBtn.innerText = 'DISCONNECT';
-  disconnectBtn.style.cssText = 'padding: 10px 30px; font-size: 1.2rem; background: transparent; border: 2px solid #ff3333; color: #ff3333; cursor: pointer; border-radius: 10px; margin-top: 50px; transition: 0.2s;';
-  disconnectBtn.onmouseenter = () => { disconnectBtn.style.background = '#ff3333'; disconnectBtn.style.color = 'white'; };
-  disconnectBtn.onmouseleave = () => { disconnectBtn.style.background = 'transparent'; disconnectBtn.style.color = '#ff3333'; };
+  disconnectBtn.style.cssText = 'padding: 15px; font-size: 1rem; font-weight: bold; letter-spacing: 2px; background: transparent; border: 1px solid rgba(255, 50, 50, 0.5); color: #ff3333; cursor: pointer; transition: 0.2s;';
+  disconnectBtn.onmouseenter = () => { disconnectBtn.style.background = 'rgba(255, 50, 50, 0.1)'; disconnectBtn.style.border = '1px solid #ff3333'; };
+  disconnectBtn.onmouseleave = () => { disconnectBtn.style.background = 'transparent'; disconnectBtn.style.border = '1px solid rgba(255, 50, 50, 0.5)'; };
   disconnectBtn.onclick = () => window.location.reload(); 
-  pauseMenu.appendChild(disconnectBtn);
+  sidebar.appendChild(disconnectBtn);
 
+  pauseMenu.appendChild(sidebar);
   document.body.appendChild(pauseMenu);
   window.pauseMenu = pauseMenu;
 
