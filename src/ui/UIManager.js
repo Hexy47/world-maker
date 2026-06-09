@@ -1,7 +1,7 @@
 import { SETTINGS } from '../../game.config.js';
 
 export class UIManager {
-  static init(controls) {
+  static init(controls, isGod) {
     this.controls = controls;
     
     // Create the global UI container
@@ -11,7 +11,7 @@ export class UIManager {
 
     // Build the menus
     this.buildWorldShiftMenu();
-    this.buildPauseMenu();
+    this.buildPauseMenu(isGod);
   }
 
   static buildWorldShiftMenu() {
@@ -73,7 +73,7 @@ export class UIManager {
     window.worldShiftMenu = worldShiftMenu; // Expose for keydown logic in main.js
   }
 
-  static buildPauseMenu() {
+  static buildPauseMenu(isGod) {
     const pauseMenu = document.createElement('div');
     pauseMenu.className = 'menu-overlay pause-menu';
     pauseMenu.id = 'pauseMenu';
@@ -123,28 +123,30 @@ export class UIManager {
     sensDiv.appendChild(sensValue);
     sidebar.appendChild(sensDiv);
 
-    // -- Theme Color Setting --
-    const themeDiv = document.createElement('div');
-    themeDiv.className = 'setting-group';
-    
-    const themeLabel = document.createElement('div');
-    themeLabel.innerText = 'THEME COLOR';
-    themeLabel.className = 'setting-label';
-    themeDiv.appendChild(themeLabel);
+    // -- Theme Color Setting (God Only) --
+    if (isGod) {
+      const themeDiv = document.createElement('div');
+      themeDiv.className = 'setting-group';
+      
+      const themeLabel = document.createElement('div');
+      themeLabel.innerText = 'THEME COLOR (GOD)';
+      themeLabel.className = 'setting-label';
+      themeDiv.appendChild(themeLabel);
 
-    const colorPicker = document.createElement('input');
-    colorPicker.type = 'color';
-    colorPicker.value = '#00aaff';
-    colorPicker.style.cssText = 'width: 100%; height: 40px; border: none; border-radius: 8px; cursor: pointer; background: transparent;';
-    
-    colorPicker.oninput = (e) => {
-      const color = e.target.value;
-      document.documentElement.style.setProperty('--accent', color);
-      document.documentElement.style.setProperty('--accent-glow', `0 0 20px ${color}`);
-    };
+      const colorPicker = document.createElement('input');
+      colorPicker.type = 'color';
+      colorPicker.value = '#00aaff';
+      colorPicker.style.cssText = 'width: 100%; height: 40px; border: none; border-radius: 8px; cursor: pointer; background: transparent;';
+      
+      colorPicker.oninput = (e) => {
+        const color = e.target.value;
+        document.documentElement.style.setProperty('--accent', color);
+        document.documentElement.style.setProperty('--accent-glow', `0 0 20px ${color}`);
+      };
 
-    themeDiv.appendChild(colorPicker);
-    sidebar.appendChild(themeDiv);
+      themeDiv.appendChild(colorPicker);
+      sidebar.appendChild(themeDiv);
+    }
 
     // Spacer
     const spacer = document.createElement('div');

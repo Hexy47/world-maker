@@ -202,7 +202,7 @@ function initThreeJS() {
   });
 
   // ─── Initialize UI Systems ───────────────────────────────────────────────
-  UIManager.init(controls);
+  UIManager.init(controls, playerIsGod);
 
   // Hotkeys not handled by Input.js movement bindings
   document.addEventListener('keydown', (event) => {
