@@ -434,23 +434,15 @@ function initThreeJS() {
   // Post-processing (bloom + SMAA)
   window._composer = initPostProcessing(renderer, scene, camera);
 
-  // Load the specific world
-  if (selectedGame === 'gta') {
-    loadGTAWorld();
-  } else if (selectedGame === 'shooter') {
-    loadShooterWorld();
-  } else {
-    loadFlatgrassWorld();
-  }
-
-  // Init Rapier physics (async, starts after world loads)
+  // Init Rapier physics (async, must be ready before worlds load)
   initPhysics().then(() => {
-    addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE/2, 0.5, SETTINGS.GROUND_SIZE/2);
-    
-    if (window.cityBuildingData) {
-      window.cityBuildingData.forEach(b => {
-        addStaticBox(b.x, b.y, b.z, b.hw, b.hh, b.hd);
-      });
+    // Load the specific world
+    if (selectedGame === 'gta') {
+      loadGTAWorld();
+    } else if (selectedGame === 'shooter') {
+      loadShooterWorld();
+    } else {
+      loadFlatgrassWorld();
     }
 
     // Initialize Player Entity
@@ -592,6 +584,9 @@ function loadGTAWorld() {
   worldGroup.add(floor);
   objects.push(floor);
 
+  // Add Physics Collider for Ground
+  addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE/2, 0.5, SETTINGS.GROUND_SIZE/2);
+
   // Procedural City Generation (Expanded 3x size)
   const blockSize = 40;
   const roadWidth = 10;
@@ -655,6 +650,9 @@ function loadGTAWorld() {
       x: b.x, y: b.y, z: b.z,
       hw: b.width/2, hh: b.height/2, hd: b.depth/2
     });
+    
+    // Create physical box
+    addStaticBox(b.x, b.y, b.z, b.width/2, b.height/2, b.depth/2);
   });
 
   worldGroup.add(darkMesh);
