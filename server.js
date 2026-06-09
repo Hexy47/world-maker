@@ -130,7 +130,23 @@ io.on('connection', (socket) => {
     const player = gameStates[currentRoom]?.players[socket.id];
     if (!currentRoom || !player) return;
 
-    const text = String(data.text || '').trim().slice(0, 200);
+    if (!currentRoom || !gameStates[currentRoom]) {
+    console.error('[Chat] Invalid room or game state:', currentRoom, gameStates);
+    return;
+  }
+  const text = String(data.text || '').trim().slice(0, 200);
+  
+  if (text) {
+    socket.to(currentRoom).emit('chatMessage', {
+      name: player.name,
+      text,
+      isGod: player.isGod,
+      isNPC: false
+    });
+    
+    // Optionally update latestTelemetry with the chat message
+    gameStates[currentRoom].latestTelemetry = { type: 'chat', data: { name: player.name, text } };
+  }
     if (!text) return;
 
     socket.to(currentRoom).emit('chatMessage', {
