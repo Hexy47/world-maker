@@ -11,9 +11,13 @@ import { SETTINGS } from '../game.config.js';
 let composer = null;
 let bloomEffect = null;
 let sceneRef = null;
+let cameraRef = null;
+let rendererRef = null;
 
 export function initPostProcessing(renderer, scene, camera) {
   sceneRef = scene;
+  cameraRef = camera;
+  rendererRef = renderer;
 
   // ── Renderer caps — most important perf settings ──────────────────────────
   renderer.setPixelRatio(1);              // NEVER allow > 1 on a game
@@ -48,12 +52,15 @@ export function initPostProcessing(renderer, scene, camera) {
 
   composer.addPass(new EffectPass(camera, bloomEffect));
 
-  console.log('[Graphics] Post-processing ready (quarter-res bloom, no SMAA)');
+  console.log('[Graphics] Post-processing initialized but currently BYPASSED for max FPS');
   return composer;
 }
 
 export function renderFrame() {
-  if (composer) composer.render();
+  // BYPASS COMPOSER: Render raw scene for massive FPS boost
+  if (rendererRef && sceneRef && cameraRef) {
+    rendererRef.render(sceneRef, cameraRef);
+  }
 }
 
 export function resizeComposer(w, h) {

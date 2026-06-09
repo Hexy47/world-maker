@@ -92,11 +92,25 @@ document.querySelectorAll('.play-btn').forEach(btn => {
     const name = usernameInput.value.trim();
     const password = passwordInput.value.trim();
     
+    // Store credentials for seamless auto-reconnects
+    window.username = name;
+    window.password = password;
+    
     socket = io();
     
     socket.on('connect', () => {
-      socket.emit('join', { name, password, game: selectedGame });
+      console.log('Connected to server with ID:', socket.id);
+      
+      // Send initial join, or auto-rejoin if the connection dropped briefly
+      if (window.username) {
+        socket.emit('join', { name: window.username, password: window.password, game: selectedGame });
+      }
     });
+
+  socket.on('disconnect', () => {
+    console.log('Disconnected from server (auto-reconnecting...)');
+    // DO NOT kick to login screen. Let socket.io auto-reconnect in the background.
+  });
 
     socket.on('init', (data) => {
       isGod = data.isGod;
