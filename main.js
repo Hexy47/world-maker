@@ -12,7 +12,7 @@ import { StudioManager } from './src/systems/StudioManager.js';
 
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 
 let socket;
 let isGod = false;
@@ -157,15 +157,31 @@ function initThreeJS() {
   camera.position.y = SETTINGS.EYE_HEIGHT;
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(SETTINGS.SKY_COLOR);
   scene.add(worldGroup);
+
+  // Setup Global Synced Day/Night Sky
+  window.sky = new Sky();
+  window.sky.scale.setScalar(450000);
+  scene.add(window.sky);
   
-  // Load HDRI Environment Map
-  new RGBELoader().load('/textures/sky.hdr', (texture) => {
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.background = texture;
-    scene.environment = texture;
-  });
+  window.sun = new THREE.Vector3();
+  const uniforms = window.sky.material.uniforms;
+  uniforms['turbidity'].value = 10;
+  uniforms['rayleigh'].value = 2;
+  uniforms['mieCoefficient'].value = 0.005;
+  uniforms['mieDirectionalG'].value = 0.8;
+
+  window.sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
+  window.sunLight.castShadow = true;
+  window.sunLight.shadow.mapSize.width = 2048;
+  window.sunLight.shadow.mapSize.height = 2048;
+  window.sunLight.shadow.camera.near = 0.5;
+  window.sunLight.shadow.camera.far = 1000;
+  window.sunLight.shadow.camera.left = -500;
+  window.sunLight.shadow.camera.right = 500;
+  window.sunLight.shadow.camera.top = 500;
+  window.sunLight.shadow.camera.bottom = -500;
+  scene.add(window.sunLight);
 
   // Renderer — lean init, graphics.js applies real settings
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -472,8 +488,8 @@ function loadGTAWorld() {
 
   // Create two InstancedMeshes (one for dark buildings, one for neon glowing ones)
   const baseGeom = new THREE.BoxGeometry(1, 1, 1);
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.9 });
-  const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.1, metalness: 0.9 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.3 });
+  const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.6, metalness: 0.3 });
 
   const numDark = buildingData.filter(b => !b.isNeon).length;
   const numNeon = buildingData.filter(b => b.isNeon).length;
@@ -813,8 +829,34 @@ let frameCount = 0;
 function animate() {
   requestAnimationFrame(animate);
 
-  const time = performance.now();
+  // Process Universal Day/Night Cycle
+  // Date.now() / 30000 means a full cycle every ~188 seconds
+  const dayTime = Date.now() / 30000;
+  const elevation = Math.sin(dayTime) * 90; // Oscillates between -90 and 90
+  const azimuth = dayTime * 20;
+
+  const phi = THREE.MathUtils.degToRad(90 - elevation);
+  const theta = THREE.MathUtils.degToRad(azimuth);
+
+  window.sun.setFromSphericalCoords(1, phi, theta);
+  window.sky.material.uniforms['sunPosition'].value.copy(window.sun);
   
+  window.sunLight.position.copy(window.sun).multiplyScalar(500);
+  
+  // Change sun color and intensity based on sunset/night
+  if (elevation > 0) {
+    window.sunLight.intensity = Math.max(0.1, Math.sin(THREE.MathUtils.degToRad(elevation)) * 2.5);
+    window.sunLight.color.setHSL(0.1 + (elevation/90)*0.1, 1.0, 0.6 + (elevation/90)*0.4);
+  } else {
+    // Night time moonlight
+    window.sunLight.intensity = 0.2;
+    window.sunLight.color.setHex(0x5588ff);
+  }
+
+  // Update Game Logic
+  Time.update();
+  
+  const time = performance.now();
   frameCount++;
   if (time - lastFpsTime >= 1000) {
     fpsCounter.innerText = `FPS: ${frameCount}`;
