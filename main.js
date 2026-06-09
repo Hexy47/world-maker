@@ -829,11 +829,26 @@ let frameCount = 0;
 function animate() {
   requestAnimationFrame(animate);
 
-  // Process Universal Day/Night Cycle
-  // Date.now() / 30000 means a full cycle every ~188 seconds
-  const dayTime = Date.now() / 30000;
-  const elevation = Math.sin(dayTime) * 90; // Oscillates between -90 and 90
-  const azimuth = dayTime * 20;
+  // Process Universal Day/Night Cycle (60 min total: 45m Day, 15m Night)
+  const totalCycleMs = 60 * 60 * 1000;
+  const dayMs = 45 * 60 * 1000;
+  const nightMs = 15 * 60 * 1000;
+  
+  const currentMs = Date.now() % totalCycleMs;
+  let elevation;
+  
+  if (currentMs < dayMs) {
+    // Daytime: map 0-45m to a positive arc (0 to 90 to 0)
+    const progress = currentMs / dayMs;
+    elevation = Math.sin(progress * Math.PI) * 90;
+  } else {
+    // Nighttime: map 45-60m to a negative arc (0 to -90 to 0)
+    const progress = (currentMs - dayMs) / nightMs;
+    elevation = -Math.sin(progress * Math.PI) * 90;
+  }
+  
+  // Continuous rotation for the sun around the horizon over the full 60 mins
+  const azimuth = (currentMs / totalCycleMs) * 360;
 
   const phi = THREE.MathUtils.degToRad(90 - elevation);
   const theta = THREE.MathUtils.degToRad(azimuth);
