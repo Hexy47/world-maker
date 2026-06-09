@@ -264,15 +264,15 @@ function initThreeJS() {
 
   window.worldShiftMenu = worldShiftMenu; // Expose globally for keydown
 
-  // ─── Pause / Settings Menu (ESC Key) ────────────────────────────────────
+  // ─── Live Settings Menu (ESC Key) ────────────────────────────────────
   const pauseMenu = document.createElement('div');
   pauseMenu.id = 'pauseMenu';
   pauseMenu.style.cssText = `
     display: none;
     position: absolute;
     top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(0, 0, 10, 0.8);
-    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 10, 0.3); /* Translucent so the live world is visible */
+    backdrop-filter: blur(4px);
     z-index: 2000;
     justify-content: center;
     align-items: center;
@@ -281,12 +281,12 @@ function initThreeJS() {
   `;
   
   const pauseTitle = document.createElement('h1');
-  pauseTitle.innerText = 'PAUSED';
-  pauseTitle.style.cssText = 'font-size: 4rem; margin-bottom: 40px; text-shadow: 0 0 20px #fff; letter-spacing: 5px;';
+  pauseTitle.innerText = 'SETTINGS';
+  pauseTitle.style.cssText = 'font-size: 3rem; margin-bottom: 40px; text-shadow: 0 0 20px #00aaff; letter-spacing: 5px;';
   pauseMenu.appendChild(pauseTitle);
 
   const resumeBtn = document.createElement('button');
-  resumeBtn.innerText = 'RESUME GAME';
+  resumeBtn.innerText = 'CLOSE MENU';
   resumeBtn.style.cssText = 'padding: 15px 40px; font-size: 1.5rem; background: transparent; border: 2px solid white; color: white; cursor: pointer; border-radius: 10px; margin-bottom: 30px; transition: 0.2s;';
   resumeBtn.onmouseenter = () => { resumeBtn.style.background = 'white'; resumeBtn.style.color = 'black'; };
   resumeBtn.onmouseleave = () => { resumeBtn.style.background = 'transparent'; resumeBtn.style.color = 'white'; };
