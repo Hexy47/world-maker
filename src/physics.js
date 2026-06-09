@@ -1,53 +1,37 @@
 /**
- * physics.js — Rapier Physics Engine wrapper
- * Handles: world init, player capsule, static colliders, block bodies
- * All tunable values come from game.config.js → editable in God Panel
+ * physics.js — Rapier Physics Engine (System Level)
+ * Exposes the physics world and helper functions for creating rigid bodies.
+ * The game loop (Time.js) is now responsible for calling world.step().
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { SETTINGS } from '../game.config.js';
 
 let world = null;
-let playerBody = null;
-let playerController = null;
 let initialized = false;
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 export async function initPhysics() {
   await RAPIER.init();
-
   world = new RAPIER.World({ x: 0, y: SETTINGS.GRAVITY, z: 0 });
-
-  // Character controller — handles slope climbing, step-ups, snap-to-ground
-  playerController = world.createCharacterController(0.05);
-  playerController.setSlideEnabled(true);
-  playerController.setMaxSlopeClimbAngle(45 * Math.PI / 180);
-  playerController.setMinSlopeSlideAngle(30 * Math.PI / 180);
-  playerController.enableAutostep(0.5, 0.2, true);
-  playerController.enableSnapToGround(0.5);
-
   initialized = true;
-  console.log('[Physics] Rapier initialized');
+  
+  // Make RAPIER available globally for the Player.js controller flags
+  window.RAPIER = RAPIER;
+  
+  console.log('[Physics System] Rapier initialized');
   return world;
 }
 
-// ─── Player capsule (created after init) ─────────────────────────────────────
-export function createPlayerBody(x, y, z) {
-  const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
-    .setTranslation(x, y, z);
-  playerBody = world.createRigidBody(bodyDesc);
-
-  // Capsule collider: radius 0.4m, half-height 0.7m = total 1.8m player
-  const colliderDesc = RAPIER.ColliderDesc.capsule(0.7, 0.4)
-    .setFriction(SETTINGS.PLAYER_FRICTION)
-    .setRestitution(SETTINGS.PLAYER_RESTITUTION);
-  world.createCollider(colliderDesc, playerBody);
-
-  return playerBody;
+export function stepWorld() {
+  if (initialized && world) {
+    world.step();
+  }
 }
 
 // ─── Static ground / building collider ───────────────────────────────────────
 export function addStaticBox(x, y, z, hw, hh, hd) {
+  if (!world) return null;
   const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z);
   const body = world.createRigidBody(bodyDesc);
   const col = RAPIER.ColliderDesc.cuboid(hw, hh, hd)
@@ -59,6 +43,7 @@ export function addStaticBox(x, y, z, hw, hh, hd) {
 
 // ─── Dynamic block (falls, stacks) ───────────────────────────────────────────
 export function addDynamicBlock(x, y, z, size) {
+  if (!world) return null;
   const half = size / 2;
   const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(x, y, z)
@@ -71,64 +56,34 @@ export function addDynamicBlock(x, y, z, size) {
   return body;
 }
 
-// ─── Step + Player Movement ───────────────────────────────────────────────────
-let verticalVelocity = 0;
-let onGround = false;
+// ─── Create Player Controller ───────────────────────────────────────────────
+export function createPlayerPhysics(x, y, z) {
+  if (!world) return null;
 
-export function stepPhysics(delta, moveInput) {
-  if (!initialized || !world || !playerBody) return null;
+  const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+    .setTranslation(x, y, z);
+  const playerBody = world.createRigidBody(bodyDesc);
 
-  const { dx, dz, jump } = moveInput; // dx/dz are already world-space unit vectors
+  const colliderDesc = RAPIER.ColliderDesc.capsule(0.7, 0.4)
+    .setFriction(SETTINGS.PLAYER_FRICTION)
+    .setRestitution(SETTINGS.PLAYER_RESTITUTION);
+  world.createCollider(colliderDesc, playerBody);
 
-  // Apply gravity to vertical velocity
-  verticalVelocity += SETTINGS.GRAVITY * delta;
-  verticalVelocity = Math.max(verticalVelocity, SETTINGS.TERMINAL_VELOCITY);
+  const playerController = world.createCharacterController(0.05);
+  playerController.setSlideEnabled(true);
+  playerController.setMaxSlopeClimbAngle(45 * Math.PI / 180);
+  playerController.setMinSlopeSlideAngle(30 * Math.PI / 180);
+  playerController.enableAutostep(0.5, 0.2, true);
+  playerController.enableSnapToGround(0.5);
 
-  // Jump
-  if (jump && onGround) {
-    verticalVelocity = SETTINGS.JUMP_FORCE;
-  }
-
-  // Desired movement this frame (dx/dz already normalized and camera-relative)
-  const desiredMove = {
-    x: dx * SETTINGS.PLAYER_SPEED * delta,
-    y: verticalVelocity * delta,
-    z: dz * SETTINGS.PLAYER_SPEED * delta
-  };
-
-  // Let Rapier's character controller compute actual movement (handles collisions)
-  playerController.computeColliderMovement(
-    playerBody.collider(0),
-    desiredMove,
-    RAPIER.QueryFilterFlags.EXCLUDE_SENSORS
-  );
-
-  const corrected = playerController.computedMovement();
-  const pos = playerBody.translation();
-  playerBody.setNextKinematicTranslation({
-    x: pos.x + corrected.x,
-    y: pos.y + corrected.y,
-    z: pos.z + corrected.z
-  });
-
-  // Check if grounded
-  onGround = playerController.computedGrounded();
-  if (onGround && verticalVelocity < 0) verticalVelocity = 0;
-
-  world.step();
-
-  return playerBody.translation();
+  return { playerBody, playerController };
 }
 
-// ─── Gravity hot-reload (called from God Panel sliders) ──────────────────────
+// ─── Hot reload ──────────────────────────────────────────────────────────────
 export function setGravity(g) {
   if (!world) return;
-  world.gravity.y = g; // Rapier uses a mutable gravity vector
+  world.gravity.y = g; 
   SETTINGS.GRAVITY = g;
 }
 
-export function setPlayerSpeed(s) { SETTINGS.PLAYER_SPEED = s; }
-export function setJumpForce(j)   { SETTINGS.JUMP_FORCE = j; }
-
-export function isGrounded() { return onGround; }
-export function getWorld()   { return world; }
+export function getWorld() { return world; }

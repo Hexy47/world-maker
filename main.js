@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import { io } from 'socket.io-client';
 import { SETTINGS } from './game.config.js';
-import { initPhysics, createPlayerBody, stepPhysics, addStaticBox, setGravity, setPlayerSpeed, setJumpForce } from './src/physics.js';
+
+// Systems
+import { Time } from './src/systems/Time.js';
+import { Input } from './src/systems/Input.js';
+import { Player } from './src/entities/Player.js';
+
+import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
 
 let socket;
@@ -36,15 +42,8 @@ const otherPlayers = {}; // Maps socket ID to Three.js Mesh
 const blockMeshes = {}; // Maps block ID to Three.js Mesh
 const npcMeshes = {}; // Maps NPC id to Three.js Group
 
-let moveForward = false;
-let moveBackward = false;
-let moveLeft = false;
-let moveRight = false;
-let canJump = false;
-
-const velocity = new THREE.Vector3(0, -10, 0);
-const direction = new THREE.Vector3();
-const color = new THREE.Color();
+// Player Entity
+let localPlayer = null;
 
 const gameHub = document.getElementById('game-hub');
 const hubUsername = document.getElementById('hub-username');
@@ -152,43 +151,11 @@ function initThreeJS() {
     if (uiLayer.style.display === 'block') controls.lock();
   });
 
-  const onKeyDown = function (event) {
+  // Hotkeys not handled by Input.js movement bindings
+  document.addEventListener('keydown', (event) => {
     if (chatOpen) return;
-    switch (event.code) {
-      case 'ArrowUp':
-      case 'KeyW': moveForward = true; break;
-      case 'ArrowLeft':
-      case 'KeyA': moveLeft = true; break;
-      case 'ArrowDown':
-      case 'KeyS': moveBackward = true; break;
-      case 'ArrowRight':
-      case 'KeyD': moveRight = true; break;
-      case 'Space': wantsJump = true; break;
-      case 'KeyP': if (playerIsGod) toggleGodPanel(); break;
-    }
-  };
-  const onKeyUp = function (event) {
-    switch (event.code) {
-      case 'Space': wantsJump = false; break;
-    }
-  };
-
-  const onKeyUp2 = function (event) {
-    switch (event.code) {
-      case 'ArrowUp':
-      case 'KeyW': moveForward = false; break;
-      case 'ArrowLeft':
-      case 'KeyA': moveLeft = false; break;
-      case 'ArrowDown':
-      case 'KeyS': moveBackward = false; break;
-      case 'ArrowRight':
-      case 'KeyD': moveRight = false; break;
-    }
-  };
-
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
-  document.addEventListener('keyup', onKeyUp2);
+    if (event.code === 'KeyP' && playerIsGod) toggleGodPanel();
+  });
 
   raycaster = new THREE.Raycaster();
 
@@ -211,20 +178,22 @@ function initThreeJS() {
 
   // Init Rapier physics (async, starts after world loads)
   initPhysics().then(() => {
-    // Ground static collider
     addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE/2, 0.5, SETTINGS.GROUND_SIZE/2);
     
-    // Add building static colliders
     if (window.cityBuildingData) {
       window.cityBuildingData.forEach(b => {
         addStaticBox(b.x, b.y, b.z, b.hw, b.hh, b.hd);
       });
     }
 
-    // Player body positioned at camera start
-    createPlayerBody(camera.position.x, camera.position.y, camera.position.z);
+    // Initialize Player Entity
+    localPlayer = new Player(camera, camera.position);
+    const { playerBody, playerController } = createPlayerPhysics(camera.position.x, camera.position.y, camera.position.z);
+    localPlayer.body = playerBody;
+    localPlayer.controller = playerController;
+
     window._physicsReady = true;
-    console.log('[Physics] World colliders ready');
+    console.log('[Physics] World colliders & Player ready');
   });
 
   // God Panel
@@ -692,7 +661,6 @@ function appendChatMessage(name, text, isGodMsg = false, isSystem = false) {
   }, 30000);
 }
 
-let prevTime = performance.now();
 let lastFpsTime = performance.now();
 let frameCount = 0;
 
@@ -718,63 +686,6 @@ function animate() {
     lastFpsTime = time;
   }
 
-  if (controls.isLocked === true) {
-    const delta = Math.min((time - prevTime) / 1000, 0.05); // cap at 50ms
-
-    // ── Rapier physics movement ──────────────────────────────────────────
-    if (window._physicsReady) {
-      // Build camera-relative move direction ignoring pitch (fixes looking up/down glitch)
-      const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-      euler.setFromQuaternion(camera.quaternion);
-      const camDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
-      const camRight = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
-
-      let fx = 0, fz = 0;
-      if (moveForward)  { fx += camDir.x;  fz += camDir.z; }
-      if (moveBackward) { fx -= camDir.x;  fz -= camDir.z; }
-      if (moveRight)    { fx += camRight.x; fz += camRight.z; }
-      if (moveLeft)     { fx -= camRight.x; fz -= camRight.z; }
-
-      // Normalize diagonal movement
-      const len = Math.sqrt(fx*fx + fz*fz);
-      if (len > 1) { fx /= len; fz /= len; }
-
-      const newPos = stepPhysics(delta, { dx: fx, dz: fz, jump: wantsJump });
-      wantsJump = false;
-
-      if (newPos) {
-        camera.position.set(newPos.x, newPos.y + SETTINGS.EYE_HEIGHT, newPos.z);
-      }
-    } else {
-      // Fallback simple movement until physics loads
-      velocity.x -= velocity.x * 10.0 * delta;
-      velocity.z -= velocity.z * 10.0 * delta;
-      velocity.y -= 20 * delta;
-      direction.z = Number(moveForward) - Number(moveBackward);
-      direction.x = Number(moveRight) - Number(moveLeft);
-      direction.normalize();
-      if (moveForward || moveBackward) velocity.z -= direction.z * SETTINGS.PLAYER_SPEED * delta;
-      if (moveLeft || moveRight) velocity.x -= direction.x * SETTINGS.PLAYER_SPEED * delta;
-      controls.moveRight(-velocity.x * delta);
-      controls.moveForward(-velocity.z * delta);
-      camera.position.y += velocity.y * delta;
-      if (camera.position.y < SETTINGS.EYE_HEIGHT) { velocity.y = 0; camera.position.y = SETTINGS.EYE_HEIGHT; }
-    }
-
-    // Car override
-    if (window.inCar) {
-      camera.position.y = 2.5;
-      window.inCar.position.x = camera.position.x;
-      window.inCar.position.z = camera.position.z;
-      const euler = new THREE.Euler(0,0,0,'YXZ');
-      euler.setFromQuaternion(camera.quaternion);
-      window.inCar.rotation.y = euler.y;
-    }
-
-    // Emit position to server
-    socket.emit('move', { position: camera.position, rotation: camera.rotation });
-  }
-
   // Day/Night Cycle for GTA World
   if (selectedGame === 'gta' && window.moonLight) {
     const timeSpeed = 0.0005;
@@ -788,8 +699,42 @@ function animate() {
     if (label && camera) label.quaternion.copy(camera.quaternion);
   }
 
-  prevTime = time;
-  renderFrame(); // bloom + SMAA post-processing
+  // === FIXED TIME STEP SYSTEMS LOOP ===
+  if (controls.isLocked) {
+    Time.tick(
+      // 1. Physics & Logic Update (runs at fixed 60Hz)
+      (fixedDelta) => {
+        if (window._physicsReady && localPlayer) {
+          localPlayer.fixedUpdate(fixedDelta);
+          stepWorld();
+        }
+      },
+      // 2. Render Update (runs as fast as possible, interpolates)
+      (alpha) => {
+        if (window._physicsReady && localPlayer) {
+          localPlayer.renderUpdate(alpha);
+        }
+
+        // Car override
+        if (window.inCar) {
+          camera.position.y = 2.5;
+          window.inCar.position.x = camera.position.x;
+          window.inCar.position.z = camera.position.z;
+          const euler = new THREE.Euler(0,0,0,'YXZ');
+          euler.setFromQuaternion(camera.quaternion);
+          window.inCar.rotation.y = euler.y;
+        }
+
+        // Emit position to server
+        socket.emit('move', { position: camera.position, rotation: camera.rotation });
+        
+        renderFrame(); // bloom + SMAA post-processing
+      }
+    );
+  } else {
+    // If paused, just render
+    renderFrame();
+  }
 }
 
 // ─── God Physics Panel ────────────────────────────────────────────────────────
