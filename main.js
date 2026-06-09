@@ -183,6 +183,9 @@ function initThreeJS() {
   window.sunLight.shadow.camera.bottom = -500;
   scene.add(window.sunLight);
 
+  window.ambientLight = new THREE.AmbientLight(0x4040ff, 0.2);
+  scene.add(window.ambientLight);
+
   // Renderer — lean init, graphics.js applies real settings
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(1); // hard lock — graphics.js also enforces this
@@ -856,16 +859,20 @@ function animate() {
   window.sun.setFromSphericalCoords(1, phi, theta);
   window.sky.material.uniforms['sunPosition'].value.copy(window.sun);
   
-  window.sunLight.position.copy(window.sun).multiplyScalar(500);
-  
   // Change sun color and intensity based on sunset/night
   if (elevation > 0) {
+    window.sunLight.position.copy(window.sun).multiplyScalar(500);
     window.sunLight.intensity = Math.max(0.1, Math.sin(THREE.MathUtils.degToRad(elevation)) * 2.5);
     window.sunLight.color.setHSL(0.1 + (elevation/90)*0.1, 1.0, 0.6 + (elevation/90)*0.4);
+    window.ambientLight.color.setHex(0xffffff);
+    window.ambientLight.intensity = 0.5;
   } else {
-    // Night time moonlight
-    window.sunLight.intensity = 0.2;
+    // Night time moonlight (Mirror sun to be above the horizon)
+    window.sunLight.position.set(-window.sun.x, Math.abs(window.sun.y), -window.sun.z).multiplyScalar(500);
+    window.sunLight.intensity = 0.3;
     window.sunLight.color.setHex(0x5588ff);
+    window.ambientLight.color.setHex(0x222255);
+    window.ambientLight.intensity = 0.2;
   }
 
   // Update Game Logic
