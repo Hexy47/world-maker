@@ -6,7 +6,7 @@ import { SETTINGS } from './game.config.js';
 import { Time } from './src/systems/Time.js';
 import { Input } from './src/systems/Input.js';
 import { Player } from './src/entities/Player.js';
-import { loadLabWorld, loadSandboxWorld, clearCurrentWorld, currentWorldMeshes } from './src/systems/WorldManager.js';
+import { loadLabWorld, loadSandboxWorld, clearCurrentWorld, worldGroup } from './src/systems/WorldManager.js';
 
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
@@ -151,6 +151,8 @@ function initThreeJS() {
   camera.position.y = SETTINGS.EYE_HEIGHT;
 
   scene = new THREE.Scene();
+  scene.background = new THREE.Color(SETTINGS.SKY_COLOR);
+  scene.add(worldGroup);
   
   // Renderer — lean init, graphics.js applies real settings
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -267,6 +269,9 @@ function initThreeJS() {
         controls.unlock();
       }
     }
+    if (event.code === 'Digit1') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'sim' }));
+    if (event.code === 'Digit2') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'sandbox' }));
+    if (event.code === 'Digit3') window.dispatchEvent(new CustomEvent('shiftWorld', { detail: 'lab' }));
   });
   
   window.addEventListener('shiftWorld', (e) => {
@@ -447,10 +452,9 @@ function loadGTAWorld() {
   const moonLight = new THREE.DirectionalLight(0x5555ff, 0.5);
   moonLight.position.set(-500, 500, -500);
   moonLight.castShadow = false; 
-  scene.add(moonLight);
-  currentWorldMeshes.push(moonLight);
+  worldGroup.add(moonLight);
   window.moonLight = moonLight;
-  scene.add(new THREE.AmbientLight(0x111122, 0.5));
+  worldGroup.add(new THREE.AmbientLight(0x111122, 0.5));
 
   // Ground (Asphalt)
   const floorGeom = new THREE.PlaneGeometry(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE);
@@ -458,7 +462,7 @@ function loadGTAWorld() {
   const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
   const floor = new THREE.Mesh(floorGeom, floorMat);
   floor.receiveShadow = true;
-  scene.add(floor);
+  worldGroup.add(floor);
   objects.push(floor);
 
   // Procedural City Generation (Optimized with InstancedMesh)
@@ -526,8 +530,8 @@ function loadGTAWorld() {
     });
   });
 
-  scene.add(darkMesh);
-  scene.add(neonMesh);
+  worldGroup.add(darkMesh);
+  worldGroup.add(neonMesh);
   objects.push(darkMesh, neonMesh);
 
   // Spawn Cars on the roads
@@ -548,9 +552,9 @@ function loadGTAWorld() {
     }
     
     car.position.set(cx, 1, cz);
-    car.castShadow = false;
-    car.receiveShadow = false;
-    scene.add(car);
+    car.castShadow = true;
+    car.receiveShadow = true;
+    worldGroup.add(car);
     objects.push(car);
     window.gtaCars.push(car);
   }

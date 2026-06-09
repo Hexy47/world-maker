@@ -2,22 +2,27 @@ import * as THREE from 'three';
 import { SETTINGS } from '../../game.config.js';
 import { clearPhysicsWorld, addStaticBox } from '../physics.js';
 
-export let currentWorldMeshes = [];
+export let worldGroup = new THREE.Group();
 
 // Helper to clear existing world
 export function clearCurrentWorld(scene) {
-  // 1. Remove all world meshes from Three.js scene
-  currentWorldMeshes.forEach(mesh => {
-    scene.remove(mesh);
-    if (mesh.geometry) mesh.geometry.dispose();
-    if (mesh.material) mesh.material.dispose();
+  // 1. Remove the entire world group from the scene
+  scene.remove(worldGroup);
+  
+  // Clean up geometries/materials
+  worldGroup.traverse((child) => {
+    if (child.isMesh) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
   });
-  currentWorldMeshes = [];
+
+  // Create a fresh group for the new world
+  worldGroup = new THREE.Group();
+  scene.add(worldGroup);
 
   // 2. Clear Rapier physics world (removes all colliders/bodies)
   clearPhysicsWorld();
-  
-  // Note: the player entity is re-added after clearPhysicsWorld is called by the main script
 }
 
 // ─── THE LAB (Aperture Science Style) ───────────────────────────────────────
@@ -34,16 +39,14 @@ export function loadLabWorld(scene) {
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
-  scene.add(floor);
-  currentWorldMeshes.push(floor);
+  worldGroup.add(floor);
 
   // Add a subtle blue glowing grid helper
   const gridHelper = new THREE.GridHelper(100, 100, 0x0088ff, 0xaaaaaa);
   gridHelper.position.y = 0.01;
   gridHelper.material.opacity = 0.5;
   gridHelper.material.transparent = true;
-  scene.add(gridHelper);
-  currentWorldMeshes.push(gridHelper);
+  worldGroup.add(gridHelper);
 
   // Physics for floor
   addStaticBox(0, -0.5, 0, 50, 0.5, 50);
@@ -65,8 +68,7 @@ export function loadLabWorld(scene) {
     wall.rotation.y = w.rotY;
     wall.castShadow = true;
     wall.receiveShadow = true;
-    scene.add(wall);
-    currentWorldMeshes.push(wall);
+    worldGroup.add(wall);
 
     if (w.rotY === 0) {
       addStaticBox(w.x, 10, w.z, 50, 10, 1);
@@ -77,14 +79,12 @@ export function loadLabWorld(scene) {
 
   // Bright surgical lighting
   const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-  scene.add(ambient);
-  currentWorldMeshes.push(ambient);
+  worldGroup.add(ambient);
 
   const overhead = new THREE.DirectionalLight(0xffffff, 1.5);
   overhead.position.set(0, 50, 0);
   overhead.castShadow = true;
-  scene.add(overhead);
-  currentWorldMeshes.push(overhead);
+  worldGroup.add(overhead);
 
   console.log('[WorldManager] The Lab loaded');
 }
@@ -101,26 +101,22 @@ export function loadSandboxWorld(scene) {
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
-  scene.add(floor);
-  currentWorldMeshes.push(floor);
+  worldGroup.add(floor);
 
   // Massive grid helper
   const gridHelper = new THREE.GridHelper(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE / 10, 0x555555, 0x333333);
   gridHelper.position.y = 0.05;
-  scene.add(gridHelper);
-  currentWorldMeshes.push(gridHelper);
+  worldGroup.add(gridHelper);
 
   addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE / 2, 0.5, SETTINGS.GROUND_SIZE / 2);
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-  scene.add(ambient);
-  currentWorldMeshes.push(ambient);
+  worldGroup.add(ambient);
 
   const sun = new THREE.DirectionalLight(0xffeedd, 1.0);
   sun.position.set(100, 200, 100);
   sun.castShadow = true;
-  scene.add(sun);
-  currentWorldMeshes.push(sun);
+  worldGroup.add(sun);
 
   console.log('[WorldManager] The Sandbox loaded');
 }
