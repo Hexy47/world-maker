@@ -46,8 +46,11 @@ class InputSystem {
     window.addEventListener('mousemove', (e) => {
       // Only track delta if the pointer is locked (game is focused)
       if (document.pointerLockElement) {
-        this.mouseDelta.x += e.movementX;
-        this.mouseDelta.y += e.movementY;
+        // Clamp the insane OS-level spikes that cause 180-degree snaps
+        const mx = Math.max(-100, Math.min(100, e.movementX));
+        const my = Math.max(-100, Math.min(100, e.movementY));
+        this.mouseDelta.x += mx;
+        this.mouseDelta.y += my;
       }
     });
   }

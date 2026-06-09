@@ -13,6 +13,10 @@ export class Player {
   constructor(camera, startPos) {
     this.camera = camera;
     
+    // Smooth camera rotation state
+    this.pitch = 0; // up/down
+    this.yaw = 0;   // left/right
+    
     // Physics state
     this.velocity = new THREE.Vector3();
     this.onGround = false;
@@ -34,12 +38,23 @@ export class Player {
    * Handles hard logic: reading input, collision, jumping
    */
   fixedUpdate(fixedDelta) {
-    // 1. Get movement directions from current camera rotation
-    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-    euler.setFromQuaternion(this.camera.quaternion);
+    // 1. Handle Custom Mouse Look (from clamped Input system)
+    const mouseDelta = Input.consumeMouseDelta();
+    const sensitivity = 0.002;
     
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
+    this.yaw -= mouseDelta.x * sensitivity;
+    this.pitch -= mouseDelta.y * sensitivity;
+    
+    // Clamp pitch to strictly prevent breaking neck / 180 snap NaNs
+    const PI_2 = Math.PI / 2 - 0.01;
+    this.pitch = Math.max(-PI_2, Math.min(PI_2, this.pitch));
+
+    // Apply rotation explicitly
+    this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+    
+    // 2. Movement Directions
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, this.yaw, 0));
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, this.yaw, 0));
 
     const moveDir = new THREE.Vector3();
     if (Input.isActionPressed('move_forward')) moveDir.add(forward);
