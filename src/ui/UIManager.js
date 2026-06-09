@@ -123,31 +123,6 @@ export class UIManager {
     sensDiv.appendChild(sensValue);
     sidebar.appendChild(sensDiv);
 
-    // -- Theme Color Setting (God Only) --
-    if (isGod) {
-      const themeDiv = document.createElement('div');
-      themeDiv.className = 'setting-group';
-      
-      const themeLabel = document.createElement('div');
-      themeLabel.innerText = 'THEME COLOR (GOD)';
-      themeLabel.className = 'setting-label';
-      themeDiv.appendChild(themeLabel);
-
-      const colorPicker = document.createElement('input');
-      colorPicker.type = 'color';
-      colorPicker.value = '#00aaff';
-      colorPicker.style.cssText = 'width: 100%; height: 40px; border: none; border-radius: 8px; cursor: pointer; background: transparent;';
-      
-      colorPicker.oninput = (e) => {
-        const color = e.target.value;
-        document.documentElement.style.setProperty('--accent', color);
-        document.documentElement.style.setProperty('--accent-glow', `0 0 20px ${color}`);
-      };
-
-      themeDiv.appendChild(colorPicker);
-      sidebar.appendChild(themeDiv);
-    }
-
     // Spacer
     const spacer = document.createElement('div');
     spacer.style.flexGrow = '1';
