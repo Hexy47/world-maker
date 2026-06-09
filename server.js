@@ -74,7 +74,7 @@ io.on('connection', (socket) => {
 
     currentRoom = game || 'sandbox';
     if (!gameStates[currentRoom]) {
-      gameStates[currentRoom] = { players: {}, blocks: [], latestTelemetry: {} };
+      gameStates[currentRoom] = { players: {}, blocks: [], latestTelemetry: { type: 'init', data: {} } };
     }
 
     socket.join(currentRoom);
