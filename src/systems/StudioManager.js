@@ -9,6 +9,8 @@ export class StudioManager {
     this.scene = scene;
     this.controls = controls; // Player controls
     this.isActive = false;
+    this.undoStack = [];
+    this.startMatrix = new THREE.Matrix4();
 
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
@@ -16,9 +18,27 @@ export class StudioManager {
     // Setup TransformControls
     this.transformControl = new TransformControls(camera, renderer.domElement);
     this.transformControl.addEventListener('dragging-changed', (event) => {
-      // Disable camera movement if dragging
+      // Disable camera movement if dragging (already handled by pointerlock unlock)
       if (this.isActive) {
-        // We might implement FlyControls later, for now we just handle pointer
+        if (event.value) {
+          // Drag started
+          if (this.selectedProxy) {
+            this.startMatrix.copy(this.selectedProxy.matrixWorld);
+          }
+        } else {
+          // Drag ended
+          if (this.selectedProxy && this.selectedMesh) {
+            const endMatrix = new THREE.Matrix4().copy(this.selectedProxy.matrixWorld);
+            if (!endMatrix.equals(this.startMatrix)) {
+              this.undoStack.push({
+                mesh: this.selectedMesh,
+                index: this.selectedIndex,
+                oldMatrix: new THREE.Matrix4().copy(this.startMatrix),
+                newMatrix: endMatrix
+              });
+            }
+          }
+        }
       }
     });
 
@@ -39,6 +59,11 @@ export class StudioManager {
     // Keybinds for TransformControls mode (W/E/R for Translate/Rotate/Scale)
     window.addEventListener('keydown', (e) => {
       if (!this.isActive) return;
+      if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        this.undo();
+        e.preventDefault();
+        return;
+      }
       if (e.code === 'KeyZ') this.transformControl.setMode('translate');
       if (e.code === 'KeyX') this.transformControl.setMode('rotate');
       if (e.code === 'KeyC') this.transformControl.setMode('scale');
@@ -114,5 +139,23 @@ export class StudioManager {
     this.transformControl.detach();
     this.selectedMesh = null;
     this.selectedIndex = -1;
+  }
+
+  static undo() {
+    if (this.undoStack.length === 0) return;
+    const action = this.undoStack.pop();
+    
+    // Set instance back to old matrix
+    action.mesh.setMatrixAt(action.index, action.oldMatrix);
+    action.mesh.instanceMatrix.needsUpdate = true;
+    
+    // If it's currently selected, update the proxy too
+    if (this.selectedMesh === action.mesh && this.selectedIndex === action.index) {
+      action.oldMatrix.decompose(
+        this.selectedProxy.position,
+        this.selectedProxy.quaternion,
+        this.selectedProxy.scale
+      );
+    }
   }
 }

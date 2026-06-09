@@ -12,6 +12,7 @@ import { StudioManager } from './src/systems/StudioManager.js';
 
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 let socket;
 let isGod = false;
@@ -159,6 +160,13 @@ function initThreeJS() {
   scene.background = new THREE.Color(SETTINGS.SKY_COLOR);
   scene.add(worldGroup);
   
+  // Load HDRI Environment Map
+  new RGBELoader().load('/textures/sky.hdr', (texture) => {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background = texture;
+    scene.environment = texture;
+  });
+
   // Renderer — lean init, graphics.js applies real settings
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(1); // hard lock — graphics.js also enforces this
@@ -464,8 +472,8 @@ function loadGTAWorld() {
 
   // Create two InstancedMeshes (one for dark buildings, one for neon glowing ones)
   const baseGeom = new THREE.BoxGeometry(1, 1, 1);
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.8 });
-  const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.2, metalness: 0.8 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1, metalness: 0.9 });
+  const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.1, metalness: 0.9 });
 
   const numDark = buildingData.filter(b => !b.isNeon).length;
   const numNeon = buildingData.filter(b => b.isNeon).length;
