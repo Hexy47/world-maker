@@ -6,6 +6,7 @@ import { SETTINGS } from './game.config.js';
 import { Time } from './src/systems/Time.js';
 import { Input } from './src/systems/Input.js';
 import { Player } from './src/entities/Player.js';
+import { loadLabWorld, loadSandboxWorld, clearCurrentWorld, currentWorldMeshes } from './src/systems/WorldManager.js';
 
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
@@ -182,10 +183,113 @@ function initThreeJS() {
     if (uiLayer.style.display === 'block') controls.lock();
   });
 
+  // ─── World Shift Menu (God Mode) ───────────────────────────────────────────
+  const worldShiftMenu = document.createElement('div');
+  worldShiftMenu.id = 'worldShiftMenu';
+  worldShiftMenu.style.cssText = `
+    display: none;
+    position: absolute;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 10, 0.7);
+    backdrop-filter: blur(15px);
+    z-index: 1500;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+  `;
+
+  const worldShiftTitle = document.createElement('h1');
+  worldShiftTitle.innerText = 'WORLD SHIFT';
+  worldShiftTitle.style.cssText = `
+    color: #fff; font-family: 'Inter', sans-serif;
+    font-size: 3rem; text-shadow: 0 0 20px #00aaff;
+    margin-bottom: 50px; letter-spacing: 5px;
+  `;
+  worldShiftMenu.appendChild(worldShiftTitle);
+
+  const worldContainer = document.createElement('div');
+  worldContainer.style.cssText = `display: flex; gap: 30px;`;
+
+  const worlds = [
+    { name: 'THE SIM', id: 'sim', color: '#ff0055' },
+    { name: 'THE SANDBOX', id: 'sandbox', color: '#00ffaa' },
+    { name: 'THE LAB', id: 'lab', color: '#0088ff' }
+  ];
+
+  worlds.forEach(w => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      width: 300px; height: 400px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid ${w.color};
+      border-radius: 20px;
+      display: flex; justify-content: center; align-items: center;
+      color: ${w.color}; font-size: 2rem; font-weight: bold;
+      cursor: pointer; transition: all 0.3s;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    `;
+    card.innerText = w.name;
+    card.onmouseenter = () => { card.style.background = w.color; card.style.color = '#000'; card.style.boxShadow = `0 0 40px ${w.color}`; };
+    card.onmouseleave = () => { card.style.background = 'rgba(255, 255, 255, 0.05)'; card.style.color = w.color; card.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)'; };
+    
+    card.onclick = () => {
+      worldShiftMenu.style.display = 'none';
+      if (controls) controls.lock();
+      window.dispatchEvent(new CustomEvent('shiftWorld', { detail: w.id }));
+    };
+    
+    worldContainer.appendChild(card);
+  });
+
+  worldShiftMenu.appendChild(worldContainer);
+  
+  const closeWorldShift = document.createElement('div');
+  closeWorldShift.innerText = 'Press [M] to close';
+  closeWorldShift.style.cssText = 'color: #888; margin-top: 40px; font-family: monospace; font-size: 1.2rem;';
+  worldShiftMenu.appendChild(closeWorldShift);
+  
+  document.body.appendChild(worldShiftMenu);
+
+  window.worldShiftMenu = worldShiftMenu; // Expose globally for keydown
+
   // Hotkeys not handled by Input.js movement bindings
   document.addEventListener('keydown', (event) => {
     if (chatOpen) return;
-    if (event.code === 'KeyP' && playerIsGod) toggleGodPanel();
+    if (event.code === 'KeyP' && playerIsGod) {
+      toggleGodPanel();
+    }
+    if (event.code === 'KeyM' && playerIsGod) {
+      if (window.worldShiftMenu.style.display === 'flex') {
+        window.worldShiftMenu.style.display = 'none';
+        controls.lock();
+      } else {
+        window.worldShiftMenu.style.display = 'flex';
+        controls.unlock();
+      }
+    }
+  });
+  
+  window.addEventListener('shiftWorld', (e) => {
+    const targetWorld = e.detail;
+    clearCurrentWorld(scene);
+    
+    if (targetWorld === 'sandbox') {
+      loadSandboxWorld(scene);
+    } else if (targetWorld === 'lab') {
+      loadLabWorld(scene);
+    } else if (targetWorld === 'sim') {
+      loadGTAWorld();
+    }
+
+    // Recreate the player's rigid body since the old world was completely destroyed
+    const startPos = targetWorld === 'lab' ? {x: 0, y: 2, z: 0} : {x: 0, y: 10, z: 0};
+    const physicsData = createPlayerPhysics(startPos.x, startPos.y, startPos.z);
+    localPlayer.body = physicsData.playerBody;
+    localPlayer.controller = physicsData.playerController;
+    localPlayer.velocity.set(0, 0, 0);
+    
+    // Sync with server (so players in The Sim don't see players in The Lab)
+    socket.emit('shiftWorld', targetWorld);
   });
 
   raycaster = new THREE.Raycaster();
@@ -344,6 +448,7 @@ function loadGTAWorld() {
   moonLight.position.set(-500, 500, -500);
   moonLight.castShadow = false; 
   scene.add(moonLight);
+  currentWorldMeshes.push(moonLight);
   window.moonLight = moonLight;
   scene.add(new THREE.AmbientLight(0x111122, 0.5));
 

@@ -23,6 +23,14 @@ export async function initPhysics() {
   return world;
 }
 
+export function clearPhysicsWorld() {
+  if (world) {
+    world.free();
+  }
+  world = new RAPIER.World({ x: 0, y: SETTINGS.GRAVITY, z: 0 });
+  console.log('[Physics System] World cleared and reset');
+}
+
 export function stepWorld() {
   if (initialized && world) {
     world.step();
