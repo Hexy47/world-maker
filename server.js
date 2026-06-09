@@ -79,7 +79,12 @@ io.on('connection', (socket) => {
 
     socket.join(currentRoom);
 
-    gameStates[currentRoom].players[socket.id] = {
+    gameStates[currentRoom] = {
+    players: {},
+    blocks: [],
+    latestTelemetry: {}
+  };
+  gameStates[currentRoom].players[socket.id] = {
       id: socket.id,
       name: name || 'Guest',
       isGod,
