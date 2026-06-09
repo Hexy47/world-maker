@@ -148,7 +148,15 @@ function initThreeJS() {
   // Implement pure HTML5 Pointer Lock (bypassing Three.js controls)
   controls = {
     isLocked: false,
-    lock: () => document.body.requestPointerLock(),
+    lock: () => {
+      // RAW MOUSE INPUT: Bypasses Windows OS mouse acceleration and polling spikes
+      const promise = document.body.requestPointerLock({ unadjustedMovement: true });
+      if (!promise) {
+        document.body.requestPointerLock(); // Fallback
+      } else {
+        promise.catch(() => document.body.requestPointerLock());
+      }
+    },
     unlock: () => document.exitPointerLock()
   };
 
