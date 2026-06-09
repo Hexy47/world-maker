@@ -79,11 +79,8 @@ io.on('connection', (socket) => {
 
     socket.join(currentRoom);
 
-    gameStates[currentRoom] = {
-    players: {},
-    blocks: [],
-    latestTelemetry: {}
-  };
+    // Initialize latestTelemetry with an empty object
+  gameStates[currentRoom].latestTelemetry = {};
   gameStates[currentRoom].players[socket.id] = {
       id: socket.id,
       name: name || 'Guest',
