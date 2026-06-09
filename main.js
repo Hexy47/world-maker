@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import { io } from 'socket.io-client';
 import { SETTINGS } from './game.config.js';
+import { initPhysics, createPlayerBody, stepPhysics, addStaticBox, setGravity, setPlayerSpeed, setJumpForce } from './src/physics.js';
+import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
 
 let socket;
 let isGod = false;
@@ -138,13 +140,14 @@ function initThreeJS() {
   scene = new THREE.Scene();
   
   // Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: false });
-  renderer.setPixelRatio(1);
+  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.BasicShadowMap;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.2;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   document.body.appendChild(renderer.domElement);
 
   window.addEventListener('resize', onWindowResize);
@@ -155,6 +158,7 @@ function initThreeJS() {
   });
 
   const onKeyDown = function (event) {
+    if (chatOpen) return;
     switch (event.code) {
       case 'ArrowUp':
       case 'KeyW': moveForward = true; break;
@@ -164,11 +168,17 @@ function initThreeJS() {
       case 'KeyS': moveBackward = true; break;
       case 'ArrowRight':
       case 'KeyD': moveRight = true; break;
-      case 'Space': if (canJump === true) velocity.y += SETTINGS.JUMP_HEIGHT; canJump = false; break;
+      case 'Space': wantsJump = true; break;
+      case 'KeyP': if (playerIsGod) toggleGodPanel(); break;
+    }
+  };
+  const onKeyUp = function (event) {
+    switch (event.code) {
+      case 'Space': wantsJump = false; break;
     }
   };
 
-  const onKeyUp = function (event) {
+  const onKeyUp2 = function (event) {
     switch (event.code) {
       case 'ArrowUp':
       case 'KeyW': moveForward = false; break;
@@ -183,10 +193,17 @@ function initThreeJS() {
 
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
+  document.addEventListener('keyup', onKeyUp2);
 
   raycaster = new THREE.Raycaster();
 
   window.inCar = null;
+
+  // Fog
+  initFog(scene);
+
+  // Post-processing (bloom + SMAA)
+  window._composer = initPostProcessing(renderer, scene, camera);
 
   // Load the specific world
   if (selectedGame === 'gta') {
@@ -196,6 +213,19 @@ function initThreeJS() {
   } else {
     loadFlatgrassWorld();
   }
+
+  // Init Rapier physics (async, starts after world loads)
+  initPhysics().then(() => {
+    // Ground static collider
+    addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE/2, 0.5, SETTINGS.GROUND_SIZE/2);
+    // Player body positioned at camera start
+    createPlayerBody(camera.position.x, camera.position.y, camera.position.z);
+    window._physicsReady = true;
+    console.log('[Physics] World colliders ready');
+  });
+
+  // God Panel
+  buildGodPanel();
 
   // Interaction Logic
   document.addEventListener('mousedown', (event) => {
@@ -647,55 +677,62 @@ function animate() {
   }
 
   if (controls.isLocked === true) {
-    const delta = (time - prevTime) / 1000;
+    const delta = Math.min((time - prevTime) / 1000, 0.05); // cap at 50ms
 
-    velocity.x -= velocity.x * 10.0 * delta;
-    velocity.z -= velocity.z * 10.0 * delta;
-    velocity.y -= (SETTINGS.GRAVITY) * delta;
+    // ── Rapier physics movement ──────────────────────────────────────────
+    if (window._physicsReady) {
+      // Build camera-relative move direction
+      const camDir = new THREE.Vector3();
+      camera.getWorldDirection(camDir);
+      camDir.y = 0;
+      camDir.normalize();
+      const camRight = new THREE.Vector3();
+      camRight.crossVectors(camDir, new THREE.Vector3(0,1,0)).normalize();
 
-    direction.z = Number(moveForward) - Number(moveBackward);
-    direction.x = Number(moveRight) - Number(moveLeft);
-    direction.normalize();
+      let fx = 0, fz = 0;
+      if (moveForward)  { fx += camDir.x;  fz += camDir.z; }
+      if (moveBackward) { fx -= camDir.x;  fz -= camDir.z; }
+      if (moveRight)    { fx += camRight.x; fz += camRight.z; }
+      if (moveLeft)     { fx -= camRight.x; fz -= camRight.z; }
 
-    const speed = window.inCar ? SETTINGS.PLAYER_SPEED * 4 : SETTINGS.PLAYER_SPEED;
+      // Normalize diagonal movement
+      const len = Math.sqrt(fx*fx + fz*fz);
+      if (len > 1) { fx /= len; fz /= len; }
 
-    if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
-    if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
+      const newPos = stepPhysics(delta, { forward: -fz, right: fx, jump: wantsJump });
+      wantsJump = false;
 
-    // A simple collision check (only Y axis for jumping)
-    controls.moveRight(-velocity.x * delta);
-    controls.moveForward(-velocity.z * delta);
-
-    // Lock Y-axis if in car
-    if (window.inCar) {
-      velocity.y = 0;
-      camera.position.y = 2.5;
-    } else {
-      camera.position.y += (velocity.y * delta);
-      if (camera.position.y < 2) {
-        velocity.y = 0;
-        camera.position.y = 2;
-        canJump = true;
+      if (newPos) {
+        camera.position.set(newPos.x, newPos.y + SETTINGS.EYE_HEIGHT, newPos.z);
       }
+    } else {
+      // Fallback simple movement until physics loads
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+      velocity.y -= 20 * delta;
+      direction.z = Number(moveForward) - Number(moveBackward);
+      direction.x = Number(moveRight) - Number(moveLeft);
+      direction.normalize();
+      if (moveForward || moveBackward) velocity.z -= direction.z * SETTINGS.PLAYER_SPEED * delta;
+      if (moveLeft || moveRight) velocity.x -= direction.x * SETTINGS.PLAYER_SPEED * delta;
+      controls.moveRight(-velocity.x * delta);
+      controls.moveForward(-velocity.z * delta);
+      camera.position.y += velocity.y * delta;
+      if (camera.position.y < SETTINGS.EYE_HEIGHT) { velocity.y = 0; camera.position.y = SETTINGS.EYE_HEIGHT; }
     }
 
-    // Move the car mesh to follow the camera if we are inside it
+    // Car override
     if (window.inCar) {
+      camera.position.y = 2.5;
       window.inCar.position.x = camera.position.x;
       window.inCar.position.z = camera.position.z;
-      // Extract the Y rotation from the camera
-      const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+      const euler = new THREE.Euler(0,0,0,'YXZ');
       euler.setFromQuaternion(camera.quaternion);
       window.inCar.rotation.y = euler.y;
     }
 
     // Emit position to server
-    if (velocity.x !== 0 || velocity.z !== 0 || velocity.y !== 0) {
-       socket.emit('move', {
-         position: camera.position,
-         rotation: camera.rotation
-       });
-    }
+    socket.emit('move', { position: camera.position, rotation: camera.rotation });
   }
 
   // Day/Night Cycle for GTA World
@@ -712,5 +749,70 @@ function animate() {
   }
 
   prevTime = time;
-  renderer.render(scene, camera);
+  renderFrame(); // bloom + SMAA post-processing
+}
+
+// ─── God Physics Panel ────────────────────────────────────────────────────────
+let godPanelOpen = false;
+let godPanelEl = null;
+let wantsJump = false;
+
+function buildGodPanel() {
+  if (!playerIsGod) return;
+  const panel = document.createElement('div');
+  panel.id = 'god-panel';
+  panel.style.cssText = `
+    position:fixed; top:50%; right:20px; transform:translateY(-50%);
+    background:rgba(0,0,0,0.85); border:1px solid #00ffcc44;
+    border-radius:12px; padding:20px; width:260px;
+    font-family:monospace; color:#00ffcc; display:none;
+    box-shadow:0 0 30px #00ffcc22; z-index:1000;
+    backdrop-filter:blur(10px);
+  `;
+
+  const sliders = [
+    { label:'Gravity',       key:'GRAVITY',        min:-50,  max:0,   step:0.5,  setter: setGravity },
+    { label:'Player Speed',  key:'PLAYER_SPEED',   min:1,    max:30,  step:0.5,  setter: setPlayerSpeed },
+    { label:'Jump Force',    key:'JUMP_FORCE',     min:0,    max:30,  step:0.5,  setter: setJumpForce },
+    { label:'Bloom Strength',key:'BLOOM_STRENGTH', min:0,    max:5,   step:0.1,  setter: setBloomStrength },
+    { label:'Bloom Cutoff',  key:'BLOOM_THRESHOLD',min:0,    max:1,   step:0.05, setter: setBloomThreshold },
+  ];
+
+  let html = `<div style="font-size:14px;font-weight:bold;margin-bottom:14px;letter-spacing:2px;">⚙️ GOD PANEL</div>`;
+  sliders.forEach(s => {
+    html += `
+      <div style="margin-bottom:12px">
+        <label style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px">
+          <span>${s.label}</span>
+          <span id="val-${s.key}">${SETTINGS[s.key]}</span>
+        </label>
+        <input type="range" min="${s.min}" max="${s.max}" step="${s.step}"
+          value="${SETTINGS[s.key]}"
+          style="width:100%;accent-color:#00ffcc"
+          oninput="
+            document.getElementById('val-${s.key}').innerText=this.value;
+            window._godSetters['${s.key}'](parseFloat(this.value));
+          ">
+      </div>`;
+  });
+  html += `<div style="font-size:10px;opacity:0.5;margin-top:10px">Press P to close</div>`;
+  panel.innerHTML = html;
+  document.body.appendChild(panel);
+  godPanelEl = panel;
+
+  // Store setter map for inline oninput handlers
+  window._godSetters = {
+    GRAVITY: setGravity,
+    PLAYER_SPEED: setPlayerSpeed,
+    JUMP_FORCE: setJumpForce,
+    BLOOM_STRENGTH: setBloomStrength,
+    BLOOM_THRESHOLD: setBloomThreshold
+  };
+}
+
+function toggleGodPanel() {
+  if (!godPanelEl) return;
+  godPanelOpen = !godPanelOpen;
+  godPanelEl.style.display = godPanelOpen ? 'block' : 'none';
+  if (godPanelOpen) controls.unlock();
 }
