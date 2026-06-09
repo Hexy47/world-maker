@@ -941,8 +941,6 @@ function animate() {
   }
 
   // Update Game Logic
-  Time.update();
-  
   const time = performance.now();
   frameCount++;
   if (time - lastFpsTime >= 1000) {
