@@ -139,15 +139,10 @@ function initThreeJS() {
 
   scene = new THREE.Scene();
   
-  // Renderer
+  // Renderer — lean init, graphics.js applies real settings
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(1); // hard lock — graphics.js also enforces this
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
   document.body.appendChild(renderer.domElement);
 
   window.addEventListener('resize', onWindowResize);
@@ -699,7 +694,7 @@ function animate() {
       const len = Math.sqrt(fx*fx + fz*fz);
       if (len > 1) { fx /= len; fz /= len; }
 
-      const newPos = stepPhysics(delta, { forward: -fz, right: fx, jump: wantsJump });
+      const newPos = stepPhysics(delta, { dx: fx, dz: fz, jump: wantsJump });
       wantsJump = false;
 
       if (newPos) {

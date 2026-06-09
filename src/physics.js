@@ -78,7 +78,7 @@ let onGround = false;
 export function stepPhysics(delta, moveInput) {
   if (!initialized || !world || !playerBody) return null;
 
-  const { forward, right, jump } = moveInput;
+  const { dx, dz, jump } = moveInput; // dx/dz are already world-space unit vectors
 
   // Apply gravity to vertical velocity
   verticalVelocity += SETTINGS.GRAVITY * delta;
@@ -89,11 +89,11 @@ export function stepPhysics(delta, moveInput) {
     verticalVelocity = SETTINGS.JUMP_FORCE;
   }
 
-  // Desired movement this frame
+  // Desired movement this frame (dx/dz already normalized and camera-relative)
   const desiredMove = {
-    x: (right  * SETTINGS.PLAYER_SPEED) * delta,
+    x: dx * SETTINGS.PLAYER_SPEED * delta,
     y: verticalVelocity * delta,
-    z: (forward * SETTINGS.PLAYER_SPEED) * delta
+    z: dz * SETTINGS.PLAYER_SPEED * delta
   };
 
   // Let Rapier's character controller compute actual movement (handles collisions)
@@ -123,7 +123,7 @@ export function stepPhysics(delta, moveInput) {
 // ─── Gravity hot-reload (called from God Panel sliders) ──────────────────────
 export function setGravity(g) {
   if (!world) return;
-  world.gravity = { x: 0, y: g, z: 0 };
+  world.gravity.y = g; // Rapier uses a mutable gravity vector
   SETTINGS.GRAVITY = g;
 }
 
