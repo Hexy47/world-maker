@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { Redis } from '@upstash/redis';
+import fs from 'fs';
 import { startAnima } from './npc/anima.js';
 import { PERSONALITIES } from './npc/personalities.js';
 
@@ -45,15 +46,26 @@ async function saveWorldBlocks(room, blocks) {
 
 async function loadCustomWorld(room) {
   try {
-    const saved = await redis.get(`world:${room}:customData`);
-    if (saved) return typeof saved === 'string' ? JSON.parse(saved) : saved;
-  } catch (e) {}
+    if (fs.existsSync('world_data.json')) {
+      const data = fs.readFileSync('world_data.json', 'utf8');
+      const allData = JSON.parse(data);
+      return allData[room] || null;
+    }
+  } catch (e) {
+    console.log(`[World] Local custom data load error: ${e.message}`);
+  }
   return null;
 }
 
 async function saveCustomWorld(room, data) {
   try {
-    await redis.set(`world:${room}:customData`, JSON.stringify(data));
+    let allData = {};
+    if (fs.existsSync('world_data.json')) {
+      allData = JSON.parse(fs.readFileSync('world_data.json', 'utf8'));
+    }
+    allData[room] = data;
+    fs.writeFileSync('world_data.json', JSON.stringify(allData, null, 2));
+    console.log(`[World] Saved custom map for ${room} to local world_data.json`);
   } catch (e) {
     console.log(`[World] Custom data save error: ${e.message}`);
   }
