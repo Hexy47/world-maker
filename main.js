@@ -213,6 +213,14 @@ function initThreeJS() {
   initPhysics().then(() => {
     // Ground static collider
     addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE/2, 0.5, SETTINGS.GROUND_SIZE/2);
+    
+    // Add building static colliders
+    if (window.cityBuildingData) {
+      window.cityBuildingData.forEach(b => {
+        addStaticBox(b.x, b.y, b.z, b.hw, b.hh, b.hd);
+      });
+    }
+
     // Player body positioned at camera start
     createPlayerBody(camera.position.x, camera.position.y, camera.position.z);
     window._physicsReady = true;
@@ -348,35 +356,74 @@ function loadGTAWorld() {
   scene.add(floor);
   objects.push(floor);
 
-  // Procedural City Generation
+  // Procedural City Generation (Optimized with InstancedMesh)
   const blockSize = 40;
   const roadWidth = 10;
   const cityExtent = 400;
 
+  // Pre-calculate buildings to instantiate
+  const buildingData = [];
   for (let x = -cityExtent; x < cityExtent; x += blockSize + roadWidth) {
     for (let z = -cityExtent; z < cityExtent; z += blockSize + roadWidth) {
       if (Math.abs(x) < 50 && Math.abs(z) < 50) continue;
       if (Math.random() > 0.8) continue;
 
       const height = THREE.MathUtils.randFloat(20, 150);
-      const geom = new THREE.BoxGeometry(blockSize, height, blockSize);
-      
       const isNeon = Math.random() > 0.7;
-      const mat = new THREE.MeshStandardMaterial({
-        color: isNeon ? new THREE.Color().setHSL(Math.random(), 1, 0.5) : 0x222222,
-        emissive: isNeon ? new THREE.Color().setHSL(Math.random(), 1, 0.2) : 0x000000,
-        roughness: 0.2,
-        metalness: 0.8
+      
+      buildingData.push({
+        x: x, y: height / 2, z: z,
+        width: blockSize, height: height, depth: blockSize,
+        isNeon: isNeon,
+        color: isNeon ? new THREE.Color().setHSL(Math.random(), 1, 0.5) : new THREE.Color(0x222222)
       });
-
-      const building = new THREE.Mesh(geom, mat);
-      building.position.set(x, height / 2, z);
-      building.castShadow = true;
-      building.receiveShadow = true;
-      scene.add(building);
-      objects.push(building);
     }
   }
+
+  // Create two InstancedMeshes (one for dark buildings, one for neon glowing ones)
+  const baseGeom = new THREE.BoxGeometry(1, 1, 1);
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.8 });
+  const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.2, metalness: 0.8 });
+
+  const numDark = buildingData.filter(b => !b.isNeon).length;
+  const numNeon = buildingData.filter(b => b.isNeon).length;
+
+  const darkMesh = new THREE.InstancedMesh(baseGeom, darkMat, numDark);
+  const neonMesh = new THREE.InstancedMesh(baseGeom, neonMat, numNeon);
+  
+  darkMesh.castShadow = true; darkMesh.receiveShadow = true;
+  neonMesh.castShadow = true; neonMesh.receiveShadow = true;
+
+  const dummy = new THREE.Object3D();
+  let darkIdx = 0, neonIdx = 0;
+
+  window.cityBuildingData = []; // Store for physics
+
+  buildingData.forEach(b => {
+    dummy.position.set(b.x, b.y, b.z);
+    dummy.scale.set(b.width, b.height, b.depth);
+    dummy.updateMatrix();
+
+    if (b.isNeon) {
+      neonMesh.setMatrixAt(neonIdx, dummy.matrix);
+      neonMesh.setColorAt(neonIdx, b.color);
+      neonIdx++;
+    } else {
+      darkMesh.setMatrixAt(darkIdx, dummy.matrix);
+      darkMesh.setColorAt(darkIdx, b.color);
+      darkIdx++;
+    }
+
+    // Save collider info (Rapier uses half-extents)
+    window.cityBuildingData.push({
+      x: b.x, y: b.y, z: b.z,
+      hw: b.width/2, hh: b.height/2, hd: b.depth/2
+    });
+  });
+
+  scene.add(darkMesh);
+  scene.add(neonMesh);
+  objects.push(darkMesh, neonMesh);
 
   // Spawn Cars on the roads
   window.gtaCars = [];
