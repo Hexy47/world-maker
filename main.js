@@ -740,7 +740,10 @@ function animate() {
 // ─── God Physics Panel ────────────────────────────────────────────────────────
 let godPanelOpen = false;
 let godPanelEl = null;
-let wantsJump = false;
+
+// Hot-reload setters for God Panel since they were removed from physics.js
+const setPlayerSpeed = (s) => { SETTINGS.PLAYER_SPEED = s; };
+const setJumpForce = (j) => { SETTINGS.JUMP_FORCE = j; };
 
 function buildGodPanel() {
   if (!playerIsGod) return;
