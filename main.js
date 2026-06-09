@@ -152,17 +152,16 @@ function initThreeJS() {
   });
 
   // --- AAA Fix: Prevent 180-degree mouse look snaps on Windows/Chrome
-  const originalOnMouseMove = controls.onMouseMove.bind(controls);
-  controls.onMouseMove = function (event) {
+  // Intercept anomalous OS-level mouse spikes BEFORE PointerLockControls receives them
+  document.addEventListener('mousemove', (event) => {
     if (!controls.isLocked) return;
     
     // Ignore OS-level mouse polling spikes that cause instant 180-degree snaps
-    if (Math.abs(event.movementX) > 150 || Math.abs(event.movementY) > 150) {
-        return;
+    if (Math.abs(event.movementX) > 100 || Math.abs(event.movementY) > 100) {
+        event.stopImmediatePropagation();
+        console.warn('Blocked mouse spike:', event.movementX, event.movementY);
     }
-    
-    originalOnMouseMove(event);
-  };
+  }, true); // useCapture = true guarantees this runs first
   // --- End Fix
 
   // Hotkeys not handled by Input.js movement bindings
