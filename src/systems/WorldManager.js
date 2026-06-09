@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SETTINGS } from '../../game.config.js';
 import { clearPhysicsWorld, addStaticBox } from '../physics.js';
 
-let currentWorldMeshes = [];
+export let currentWorldMeshes = [];
 
 // Helper to clear existing world
 export function clearCurrentWorld(scene) {
