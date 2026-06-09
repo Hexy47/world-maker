@@ -172,13 +172,35 @@ export class UIManager {
     studioUI.appendChild(help);
 
     const publishBtn = document.createElement('button');
+    publishBtn.id = 'publish-btn';
     publishBtn.innerText = 'PUBLISH TO SERVER';
     publishBtn.className = 'btn-primary';
     publishBtn.style.padding = '10px';
     publishBtn.style.fontSize = '0.9rem';
-    publishBtn.onclick = () => {
-      window.dispatchEvent(new CustomEvent('publishWorld'));
-    };
+    
+    // Asset Importer
+    const assetSection = document.createElement('div');
+    assetSection.style.marginTop = '15px';
+    assetSection.style.borderTop = '1px solid #444';
+    assetSection.style.paddingTop = '10px';
+    assetSection.innerHTML = `
+      <div style="font-size: 10px; color: #888; margin-bottom: 5px;">IMPORT CUSTOM GLTF</div>
+      <div style="display: flex; gap: 5px;">
+        <input type="text" id="model-input" placeholder="model.glb" style="flex: 1; padding: 5px; background: #222; color: white; border: 1px solid #555;" />
+        <button id="spawn-btn" class="btn-primary" style="padding: 5px 10px;">Spawn</button>
+      </div>
+    `;
+    studioUI.appendChild(assetSection);
+
+    setTimeout(() => {
+      document.getElementById('publish-btn').addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('publishWorld'));
+      });
+      document.getElementById('spawn-btn').addEventListener('click', () => {
+        const val = document.getElementById('model-input').value;
+        if (val) window.dispatchEvent(new CustomEvent('spawnModel', { detail: val }));
+      });
+    }, 100);
     studioUI.appendChild(publishBtn);
 
     this.uiContainer.appendChild(studioUI);

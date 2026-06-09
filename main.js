@@ -13,6 +13,7 @@ import { StudioManager } from './src/systems/StudioManager.js';
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 let socket;
 let isGod = false;
@@ -261,7 +262,7 @@ function initThreeJS() {
   window.addEventListener('publishWorld', () => {
     if (!playerIsGod) return;
     
-    // Extract matrices of all InstancedMeshes in the worldGroup
+    // Extract matrices of all InstancedMeshes and custom GLTFs in the worldGroup
     const worldData = [];
     worldGroup.children.forEach(child => {
       if (child.isInstancedMesh && child.userData.isEditable) {
@@ -271,12 +272,41 @@ function initThreeJS() {
           child.getMatrixAt(i, matrix);
           matrices.push(matrix.toArray());
         }
-        worldData.push({ id: child.uuid, matrices });
+        worldData.push({ id: child.uuid, type: 'instanced', matrices });
+      } else if (child.userData.isEditable && child.userData.modelName) {
+        worldData.push({ 
+           id: child.uuid, 
+           type: 'gltf', 
+           modelName: child.userData.modelName, 
+           matrix: child.matrixWorld.toArray() 
+        });
       }
     });
 
     socket.emit('publishWorld', { room: selectedGame, data: worldData });
     showNotification('World Published to Server!');
+  });
+  
+  window.addEventListener('spawnModel', (e) => {
+    if (!playerIsGod) return;
+    const modelName = e.detail;
+    showNotification(`Loading ${modelName}...`);
+    new GLTFLoader().load(`/models/${modelName}`, (gltf) => {
+       const model = gltf.scene;
+       model.userData.isEditable = true;
+       model.userData.modelName = modelName;
+       
+       // Spawn slightly in front of camera
+       const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
+       model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
+       model.updateMatrixWorld();
+       
+       worldGroup.add(model);
+       objects.push(model);
+       showNotification(`Successfully Spawned ${modelName}`);
+    }, undefined, (error) => {
+       showNotification(`Error: Could not find /models/${modelName}`);
+    });
   });
   
   window.addEventListener('shiftWorld', (e) => {
@@ -552,6 +582,39 @@ function loadGTAWorld() {
   worldGroup.add(darkMesh);
   worldGroup.add(neonMesh);
   objects.push(darkMesh, neonMesh);
+
+  // Load custom GLTF models from server (outside the loop!)
+  if (window.customWorldData) {
+      window.customWorldData.forEach(data => {
+         if (data.type === 'gltf' || data.modelName) {
+            new GLTFLoader().load(`/models/${data.modelName}`, (gltf) => {
+               const model = gltf.scene;
+               model.userData.isEditable = true;
+               model.userData.modelName = data.modelName;
+               model.uuid = data.id; 
+               model.matrixAutoUpdate = false;
+               model.matrix.fromArray(data.matrix);
+               model.updateMatrixWorld(true);
+               
+               model.traverse(child => {
+                 if (child.isMesh) {
+                   child.castShadow = true;
+                   child.receiveShadow = true;
+                 }
+               });
+               
+               worldGroup.add(model);
+               objects.push(model);
+               
+               // Calculate physics bounds
+               const box = new THREE.Box3().setFromObject(model);
+               const size = new THREE.Vector3(); box.getSize(size);
+               const center = new THREE.Vector3(); box.getCenter(center);
+               addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
+            });
+         }
+      });
+  }
 
   // Spawn Cars on the roads
   window.gtaCars = [];
@@ -861,6 +924,7 @@ function animate() {
   
   // Change sun color and intensity based on sunset/night
   if (elevation > 0) {
+    window.sky.visible = true;
     window.sunLight.position.copy(window.sun).multiplyScalar(500);
     window.sunLight.intensity = Math.max(0.1, Math.sin(THREE.MathUtils.degToRad(elevation)) * 2.5);
     window.sunLight.color.setHSL(0.1 + (elevation/90)*0.1, 1.0, 0.6 + (elevation/90)*0.4);
@@ -868,11 +932,12 @@ function animate() {
     window.ambientLight.intensity = 0.5;
   } else {
     // Night time moonlight (Mirror sun to be above the horizon)
+    window.sky.visible = false; // Hide the pitch black shader so stars are visible!
     window.sunLight.position.set(-window.sun.x, Math.abs(window.sun.y), -window.sun.z).multiplyScalar(500);
-    window.sunLight.intensity = 0.3;
-    window.sunLight.color.setHex(0x5588ff);
-    window.ambientLight.color.setHex(0x222255);
-    window.ambientLight.intensity = 0.2;
+    window.sunLight.intensity = 0.5;
+    window.sunLight.color.setHex(0x77aaff);
+    window.ambientLight.color.setHex(0x444466);
+    window.ambientLight.intensity = 0.8;
   }
 
   // Update Game Logic

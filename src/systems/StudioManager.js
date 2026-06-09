@@ -22,13 +22,12 @@ export class StudioManager {
       if (this.isActive) {
         if (event.value) {
           // Drag started
-          if (this.selectedProxy) {
-            this.startMatrix.copy(this.selectedProxy.matrixWorld);
-          }
+          const targetMatrix = this.selectedProxy ? this.selectedProxy.matrixWorld : (this.selectedMesh ? this.selectedMesh.matrixWorld : new THREE.Matrix4());
+          this.startMatrix.copy(targetMatrix);
         } else {
           // Drag ended
-          if (this.selectedProxy && this.selectedMesh) {
-            const endMatrix = new THREE.Matrix4().copy(this.selectedProxy.matrixWorld);
+          if (this.selectedMesh) {
+            const endMatrix = new THREE.Matrix4().copy(this.selectedProxy ? this.selectedProxy.matrixWorld : this.selectedMesh.matrixWorld);
             if (!endMatrix.equals(this.startMatrix)) {
               this.undoStack.push({
                 mesh: this.selectedMesh,
@@ -43,12 +42,17 @@ export class StudioManager {
     });
 
     this.transformControl.addEventListener('change', () => {
-      // Sync proxy transform back to InstancedMesh
-      if (this.selectedProxy && this.selectedMesh) {
-        this.selectedProxy.updateMatrixWorld();
+      // Sync proxy transform back to  static update() {
+    if (this.isActive && this.selectedMesh) {
+      if (this.selectedIndex !== -1 && this.selectedProxy) {
+        // InstancedMesh
         this.selectedMesh.setMatrixAt(this.selectedIndex, this.selectedProxy.matrixWorld);
         this.selectedMesh.instanceMatrix.needsUpdate = true;
+      } else {
+        // Standard Mesh (GLTF) updates itself via TransformControls automatically
       }
+    }
+  }
     });
 
     this.scene.add(this.transformControl);
@@ -108,12 +112,44 @@ export class StudioManager {
     const intersects = this.raycaster.intersectObjects(worldGroup.children, true);
 
     if (intersects.length > 0) {
-      // Find the first valid instanced mesh
-      const hit = intersects.find(i => i.object.isInstancedMesh);
-      if (hit) {
-        this.selectInstance(hit.object, hit.instanceId);
+        const intersect = intersects[0];
+        
+        let root = intersect.object;
+        while(root && root.parent && !root.userData.isEditable) {
+           root = root.parent;
+        }
+
+        if (root && root.userData.isEditable) {
+          this.selectedMesh = root;
+          
+          if (root.isInstancedMesh) {
+             this.selectedIndex = intersect.instanceId;
+             const matrix = new THREE.Matrix4();
+             root.getMatrixAt(this.selectedIndex, matrix);
+             
+             if (!this.selectedProxy) {
+               this.selectedProxy = new THREE.Object3D();
+               this.scene.add(this.selectedProxy);
+             }
+             
+             matrix.decompose(
+               this.selectedProxy.position,
+               this.selectedProxy.quaternion,
+               this.selectedProxy.scale
+             );
+             this.selectedProxy.updateMatrixWorld();
+             
+             this.transformControl.attach(this.selectedProxy);
+          } else {
+             // It's a custom GLTF or standard mesh
+             this.selectedIndex = -1;
+             this.transformControl.attach(root);
+             this.selectedProxy = null; // No proxy needed for standard meshes!
+          }
+          
+          this.isActive = true;
+        }
       }
-    }
   }
 
   static selectInstance(instancedMesh, instanceId) {
@@ -145,17 +181,25 @@ export class StudioManager {
     if (this.undoStack.length === 0) return;
     const action = this.undoStack.pop();
     
-    // Set instance back to old matrix
-    action.mesh.setMatrixAt(action.index, action.oldMatrix);
-    action.mesh.instanceMatrix.needsUpdate = true;
-    
-    // If it's currently selected, update the proxy too
-    if (this.selectedMesh === action.mesh && this.selectedIndex === action.index) {
-      action.oldMatrix.decompose(
-        this.selectedProxy.position,
-        this.selectedProxy.quaternion,
-        this.selectedProxy.scale
-      );
+    if (action.index !== -1) {
+      // Instanced Mesh
+      action.mesh.setMatrixAt(action.index, action.oldMatrix);
+      action.mesh.instanceMatrix.needsUpdate = true;
+      
+      if (this.selectedMesh === action.mesh && this.selectedIndex === action.index && this.selectedProxy) {
+        action.oldMatrix.decompose(
+          this.selectedProxy.position,
+          this.selectedProxy.quaternion,
+          this.selectedProxy.scale
+        );
+      }
+    } else {
+      // GLTF / Standard Mesh
+      action.mesh.matrixAutoUpdate = false;
+      action.mesh.matrix.copy(action.oldMatrix);
+      action.mesh.matrix.decompose(action.mesh.position, action.mesh.quaternion, action.mesh.scale);
+      action.mesh.updateMatrixWorld(true);
+      action.mesh.matrixAutoUpdate = true;
     }
   }
 }
