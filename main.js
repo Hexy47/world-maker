@@ -339,10 +339,10 @@ function loadGTAWorld() {
   starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
   scene.add(new THREE.Points(starGeom, starMat));
 
-  // Moon Light
+  // Moon Light (Shadows disabled for massive FPS gain on weak GPUs)
   const moonLight = new THREE.DirectionalLight(0x5555ff, 0.5);
   moonLight.position.set(-500, 500, -500);
-  moonLight.castShadow = true;
+  moonLight.castShadow = false; 
   scene.add(moonLight);
   window.moonLight = moonLight;
   scene.add(new THREE.AmbientLight(0x111122, 0.5));
@@ -443,8 +443,8 @@ function loadGTAWorld() {
     }
     
     car.position.set(cx, 1, cz);
-    car.castShadow = true;
-    car.receiveShadow = true;
+    car.castShadow = false;
+    car.receiveShadow = false;
     scene.add(car);
     objects.push(car);
     window.gtaCars.push(car);
@@ -723,13 +723,11 @@ function animate() {
 
     // ── Rapier physics movement ──────────────────────────────────────────
     if (window._physicsReady) {
-      // Build camera-relative move direction
-      const camDir = new THREE.Vector3();
-      camera.getWorldDirection(camDir);
-      camDir.y = 0;
-      camDir.normalize();
-      const camRight = new THREE.Vector3();
-      camRight.crossVectors(camDir, new THREE.Vector3(0,1,0)).normalize();
+      // Build camera-relative move direction ignoring pitch (fixes looking up/down glitch)
+      const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+      euler.setFromQuaternion(camera.quaternion);
+      const camDir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, euler.y, 0));
+      const camRight = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, euler.y, 0));
 
       let fx = 0, fz = 0;
       if (moveForward)  { fx += camDir.x;  fz += camDir.z; }
