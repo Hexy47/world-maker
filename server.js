@@ -43,6 +43,22 @@ async function saveWorldBlocks(room, blocks) {
   }
 }
 
+async function loadCustomWorld(room) {
+  try {
+    const saved = await redis.get(`world:${room}:customData`);
+    if (saved) return typeof saved === 'string' ? JSON.parse(saved) : saved;
+  } catch (e) {}
+  return null;
+}
+
+async function saveCustomWorld(room, data) {
+  try {
+    await redis.set(`world:${room}:customData`, JSON.stringify(data));
+  } catch (e) {
+    console.log(`[World] Custom data save error: ${e.message}`);
+  }
+}
+
 // ─── Game State ──────────────────────────────────────────────────────────────
 const gameStates = {
   sandbox: { players: {}, blocks: [], latestTelemetry: {} },
@@ -54,6 +70,7 @@ const gameStates = {
 async function initWorldState() {
   for (const room of Object.keys(gameStates)) {
     gameStates[room].blocks = await loadWorldBlocks(room);
+    gameStates[room].customData = await loadCustomWorld(room);
   }
 }
 
@@ -92,6 +109,7 @@ io.on('connection', (socket) => {
     socket.emit('init', {
       players: gameStates[currentRoom].players,
       blocks: gameStates[currentRoom].blocks,
+      customData: gameStates[currentRoom].customData,
       selfId: socket.id,
       isGod
     });
@@ -126,6 +144,18 @@ io.on('connection', (socket) => {
 
     // Persist to Redis immediately
     saveWorldBlocks(currentRoom, gameStates[currentRoom].blocks);
+  });
+
+  socket.on('publishWorld', (data) => {
+    const player = gameStates[currentRoom]?.players[socket.id];
+    if (!currentRoom || !player?.isGod) return;
+    
+    // Save the new layout arrays to state and redis
+    gameStates[data.room].customData = data.data;
+    saveCustomWorld(data.room, data.data);
+    
+    // Broadcast the new world to everyone so their clients hot-reload the mesh matrices
+    io.to(data.room).emit('worldUpdated', data.data);
   });
 
   socket.on('chatMessage', (data) => {

@@ -8,6 +8,7 @@ import { Input } from './src/systems/Input.js';
 import { Player } from './src/entities/Player.js';
 import { loadLabWorld, loadSandboxWorld, clearCurrentWorld, worldGroup } from './src/systems/WorldManager.js';
 import { UIManager } from './src/ui/UIManager.js';
+import { StudioManager } from './src/systems/StudioManager.js';
 
 import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity } from './src/physics.js';
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
@@ -136,11 +137,14 @@ document.querySelectorAll('.play-btn').forEach(btn => {
         }
       }
       
-      // Add existing blocks
-      data.blocks.forEach(blockData => addBlock(blockData));
-
-      setupSocketListeners();
-      initChat();
+      // Populate existing blocks and players
+      if (data.blocks) {
+        data.blocks.forEach(b => {
+          addBlock(b.position.x, b.position.y, b.position.z, b.color, b.id);
+        });
+      }
+      
+      window.customWorldData = data.customData;  initChat();
       appendChatMessage('', `Welcome to ${selectedGame}! Press T to chat.`, false, true);
       animate();
     });
@@ -203,12 +207,18 @@ function initThreeJS() {
 
   // ─── Initialize UI Systems ───────────────────────────────────────────────
   UIManager.init(controls, playerIsGod);
+  if (playerIsGod) {
+    StudioManager.init(camera, renderer, scene, controls);
+  }
 
   // Hotkeys not handled by Input.js movement bindings
   document.addEventListener('keydown', (event) => {
     if (chatOpen) return;
     if (event.code === 'KeyP' && playerIsGod) {
       toggleGodPanel();
+    }
+    if (event.code === 'KeyB' && playerIsGod) {
+      StudioManager.toggle();
     }
     if (event.code === 'KeyQ' && playerIsGod) {
       if (window.worldShiftMenu.style.display === 'flex') {
@@ -219,6 +229,27 @@ function initThreeJS() {
         controls.unlock();
       }
     }
+  });
+
+  window.addEventListener('publishWorld', () => {
+    if (!playerIsGod) return;
+    
+    // Extract matrices of all InstancedMeshes in the worldGroup
+    const worldData = [];
+    worldGroup.children.forEach(child => {
+      if (child.isInstancedMesh && child.userData.isEditable) {
+        const matrices = [];
+        const matrix = new THREE.Matrix4();
+        for (let i = 0; i < child.count; i++) {
+          child.getMatrixAt(i, matrix);
+          matrices.push(matrix.toArray());
+        }
+        worldData.push({ id: child.uuid, matrices });
+      }
+    });
+
+    socket.emit('publishWorld', { room: selectedGame, data: worldData });
+    showNotification('World Published to Server!');
   });
   
   window.addEventListener('shiftWorld', (e) => {
@@ -442,6 +473,11 @@ function loadGTAWorld() {
   const darkMesh = new THREE.InstancedMesh(baseGeom, darkMat, numDark);
   const neonMesh = new THREE.InstancedMesh(baseGeom, neonMat, numNeon);
   
+  darkMesh.userData.isEditable = true;
+  darkMesh.uuid = 'GTA_DarkBuildings';
+  neonMesh.userData.isEditable = true;
+  neonMesh.uuid = 'GTA_NeonBuildings';
+  
   darkMesh.castShadow = true; darkMesh.receiveShadow = true;
   neonMesh.castShadow = true; neonMesh.receiveShadow = true;
 
@@ -453,13 +489,24 @@ function loadGTAWorld() {
   buildingData.forEach(b => {
     dummy.position.set(b.x, b.y, b.z);
     dummy.scale.set(b.width, b.height, b.depth);
+    dummy.quaternion.identity();
     dummy.updateMatrix();
 
     if (b.isNeon) {
+      let customArr = window.customWorldData?.find(d => d.id === 'GTA_NeonBuildings')?.matrices[neonIdx];
+      if (customArr) {
+        dummy.matrix.fromArray(customArr);
+        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+      }
       neonMesh.setMatrixAt(neonIdx, dummy.matrix);
       neonMesh.setColorAt(neonIdx, b.color);
       neonIdx++;
     } else {
+      let customArr = window.customWorldData?.find(d => d.id === 'GTA_DarkBuildings')?.matrices[darkIdx];
+      if (customArr) {
+        dummy.matrix.fromArray(customArr);
+        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+      }
       darkMesh.setMatrixAt(darkIdx, dummy.matrix);
       darkMesh.setColorAt(darkIdx, b.color);
       darkIdx++;
@@ -509,18 +556,18 @@ function loadShooterWorld() {
   loadFlatgrassWorld();
 }
 
-function addBlock(data) {
+function addBlock(x, y, z, color, id) {
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   const material = new THREE.MeshLambertMaterial({ 
-    color: data.color
+    color: color
   });
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.copy(data.position);
+  mesh.position.set(x, y, z);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
   objects.push(mesh);
-  blockMeshes[data.id] = mesh;
+  blockMeshes[id] = mesh;
 }
 
 function addOtherPlayer(playerData) {
@@ -608,7 +655,13 @@ function setupSocketListeners() {
   });
 
   socket.on('blockPlaced', (block) => {
-    addBlock(block);
+    addBlock(block.position.x, block.position.y, block.position.z, block.color, block.id);
+  });
+
+  socket.on('worldUpdated', (customData) => {
+    window.customWorldData = customData;
+    // Force reload the current world
+    window.dispatchEvent(new CustomEvent('shiftWorld', { detail: selectedGame }));
   });
   
   socket.on('notification', (msg) => {

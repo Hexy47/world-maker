@@ -12,6 +12,9 @@ export class UIManager {
     // Build the menus
     this.buildWorldShiftMenu();
     this.buildPauseMenu(isGod);
+    if (isGod) {
+      this.buildStudioUI();
+    }
   }
 
   static buildWorldShiftMenu() {
@@ -144,5 +147,41 @@ export class UIManager {
     pauseMenu.appendChild(sidebar);
     this.uiContainer.appendChild(pauseMenu);
     window.pauseMenu = pauseMenu;
+  }
+
+  static buildStudioUI() {
+    const studioUI = document.createElement('div');
+    studioUI.id = 'studioUI';
+    studioUI.style.cssText = `
+      display: none;
+      position: absolute; top: 20px; right: 20px;
+      background: rgba(10, 15, 30, 0.9); border: 1px solid rgba(0, 170, 255, 0.3);
+      border-radius: 12px; padding: 15px; color: white;
+      font-family: monospace; z-index: 1000; box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+      pointer-events: auto;
+    `;
+
+    const title = document.createElement('div');
+    title.innerText = '🛠 WORLD STUDIO';
+    title.style.cssText = 'color: #00aaff; font-weight: bold; margin-bottom: 10px; font-size: 1.1rem;';
+    studioUI.appendChild(title);
+
+    const help = document.createElement('div');
+    help.innerHTML = 'Click building to select<br/><b>Z</b>: Move | <b>X</b>: Rotate | <b>C</b>: Scale<br/><b>ESC</b>: Deselect';
+    help.style.cssText = 'color: #aaa; margin-bottom: 15px; line-height: 1.4;';
+    studioUI.appendChild(help);
+
+    const publishBtn = document.createElement('button');
+    publishBtn.innerText = 'PUBLISH TO SERVER';
+    publishBtn.className = 'btn-primary';
+    publishBtn.style.padding = '10px';
+    publishBtn.style.fontSize = '0.9rem';
+    publishBtn.onclick = () => {
+      window.dispatchEvent(new CustomEvent('publishWorld'));
+    };
+    studioUI.appendChild(publishBtn);
+
+    this.uiContainer.appendChild(studioUI);
+    window.studioUI = studioUI;
   }
 }
