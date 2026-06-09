@@ -49,6 +49,8 @@ export class Player {
 
     if (moveDir.lengthSq() > 0) moveDir.normalize();
 
+    const speed = Input.isActionPressed('sprint') ? SETTINGS.PLAYER_SPEED * SETTINGS.PLAYER_SPRINT_MULT : SETTINGS.PLAYER_SPEED;
+
     // 3. Apply Gravity and Jump
     this.velocity.y += SETTINGS.GRAVITY * fixedDelta;
     this.velocity.y = Math.max(this.velocity.y, SETTINGS.TERMINAL_VELOCITY);
