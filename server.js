@@ -80,7 +80,7 @@ io.on('connection', (socket) => {
     socket.join(currentRoom);
 
     // Initialize latestTelemetry with an empty object
-  gameStates[currentRoom].latestTelemetry = {};
+  gameStates[currentRoom].latestTelemetry = { type: 'init', data: {} };
   gameStates[currentRoom].players[socket.id] = {
       id: socket.id,
       name: name || 'Guest',
