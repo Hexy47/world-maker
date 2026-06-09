@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect, SMAAEffect } from 'postprocessing';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
 import { SETTINGS } from '../game.config.js';
 
 let composer = null;
@@ -32,23 +32,23 @@ export function initPostProcessing(renderer, scene, camera) {
   // Pass 1: render scene
   composer.addPass(new RenderPass(scene, camera));
 
-  // Bloom — HALF resolution to save GPU (biggest perf win for bloom)
+  // Bloom — QUARTER resolution to save GPU (biggest perf win for bloom)
   bloomEffect = new BloomEffect({
     luminanceThreshold: SETTINGS.BLOOM_THRESHOLD,
     luminanceSmoothing: 0.05,
     intensity:          SETTINGS.BLOOM_STRENGTH,
     mipmapBlur:         true,
     levels:             6,
-    // Render bloom at 0.5x resolution — huge GPU savings, barely visible difference
-    resolutionScale:    0.5
+    // Render bloom at 0.25x resolution — insane GPU savings, slightly fuzzier glow
+    resolutionScale:    0.25
   });
 
-  // SMAA — fast software anti-aliasing
-  const smaaEffect = new SMAAEffect();
+  // Removed SMAA entirely because it crushes weak Windows PCs. 
+  // Native MSAA or no AA is better for pure FPS.
 
-  composer.addPass(new EffectPass(camera, bloomEffect, smaaEffect));
+  composer.addPass(new EffectPass(camera, bloomEffect));
 
-  console.log('[Graphics] Post-processing ready (half-res bloom)');
+  console.log('[Graphics] Post-processing ready (quarter-res bloom, no SMAA)');
   return composer;
 }
 

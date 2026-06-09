@@ -151,6 +151,20 @@ function initThreeJS() {
     if (uiLayer.style.display === 'block') controls.lock();
   });
 
+  // --- AAA Fix: Prevent 180-degree mouse look snaps on Windows/Chrome
+  const originalOnMouseMove = controls.onMouseMove.bind(controls);
+  controls.onMouseMove = function (event) {
+    if (!controls.isLocked) return;
+    
+    // Ignore OS-level mouse polling spikes that cause instant 180-degree snaps
+    if (Math.abs(event.movementX) > 150 || Math.abs(event.movementY) > 150) {
+        return;
+    }
+    
+    originalOnMouseMove(event);
+  };
+  // --- End Fix
+
   // Hotkeys not handled by Input.js movement bindings
   document.addEventListener('keydown', (event) => {
     if (chatOpen) return;
