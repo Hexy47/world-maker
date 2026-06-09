@@ -145,7 +145,9 @@ io.on('connection', (socket) => {
     });
     
     // Optionally update latestTelemetry with the chat message
+    if (currentRoom && gameStates[currentRoom]) {
     gameStates[currentRoom].latestTelemetry = { type: 'chat', data: { name: player.name, text } };
+  }
   }
     if (!text) return;
 
