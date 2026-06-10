@@ -27,10 +27,10 @@ export default function App() {
           { name: 'sprint', keys: ['Shift'] },
         ]}
       >
-        <Canvas shadows camera={{ position: [0, 10, 0], fov: 75, near: 0.1, far: 2000 }}>
+        <Canvas camera={{ position: [0, 10, 0], fov: 75, near: 0.1, far: 2000 }}>
           <color attach="background" args={['#0a0a1a']} />
-          <ambientLight intensity={0.5} />
-          <directionalLight castShadow position={[500, 500, -500]} intensity={2} shadow-mapSize={[2048, 2048]} />
+          <ambientLight intensity={SETTINGS.AMBIENT_INTENSITY} />
+          <directionalLight position={[500, 500, -500]} intensity={SETTINGS.SUN_INTENSITY} />
           
           <Suspense fallback={null}>
             <Physics timeStep="vary" gravity={[0, SETTINGS.GRAVITY, 0]}>

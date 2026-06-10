@@ -19,8 +19,9 @@ export function CityChunk({ chunkData, isDark }) {
   
   if (count === 0) return null;
 
-  const [visible, setVisible] = useState(true);
-  const [useBasic, setUseBasic] = useState(false);
+  const [physicsActive, setPhysicsActive] = useState(false);
+  const visibleRef = useRef(true);
+  const useBasicRef = useRef(false);
 
   // Compute exact center in World Coordinates
   const towerX = chunkData.cx * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
@@ -31,7 +32,6 @@ export function CityChunk({ chunkData, isDark }) {
     const positions = new Float32Array(count * 3);
     const scales = new Float32Array(count * 3);
     const rotations = new Float32Array(count * 4); // quaternions
-    const colors = new Float32Array(count * 3);
     
     for (let i = 0; i < count; i++) {
       const b = buildings[i];
@@ -47,12 +47,8 @@ export function CityChunk({ chunkData, isDark }) {
       rotations[i * 4 + 1] = 0;
       rotations[i * 4 + 2] = 0;
       rotations[i * 4 + 3] = 1;
-      
-      colors[i * 3 + 0] = b.color.r;
-      colors[i * 3 + 1] = b.color.g;
-      colors[i * 3 + 2] = b.color.b;
     }
-    return { positions, scales, rotations, colors };
+    return { positions, scales, rotations };
   }, [buildings, count]);
 
   // Apply colors directly to InstancedMesh on mount and set Bounding Sphere
@@ -67,49 +63,69 @@ export function CityChunk({ chunkData, isDark }) {
       // We give it a massive 600m radius sphere. 
       // If this massive sphere leaves your screen (e.g. it's completely behind you), it is culled!
       meshRef.current.geometry.computeBoundingSphere();
-      meshRef.current.boundingSphere = new THREE.Sphere(new THREE.Vector3(0,0,0), 600);
+      // FIX CULLING BUG: Set the bounding sphere center to the chunk's actual center (towerX, 0, towerZ)
+      meshRef.current.boundingSphere = new THREE.Sphere(new THREE.Vector3(towerX, 0, towerZ), 600);
       
       meshRef.current.__colorsApplied = true;
     }
   });
 
-  // Distance tracking for Culling & LOD
+  // Distance tracking for Culling & LOD & Physics (direct DOM/Three.js manipulation to avoid state updates)
   useFrame((state) => {
+    if (!meshRef.current) return;
+
     const cam = state.camera.position;
     const dist = Math.hypot(towerX - cam.x, towerZ - cam.z);
 
-    if (dist > 800) {
-      if (visible) setVisible(false);
-    } else {
-      if (!visible) setVisible(true);
-      
-      // MASSIVE FPS BOOST: Swap to Basic Material at 300m instead of 600m
-      // PBR is too expensive to run on thousands of buildings far away
+    // 1. Frustum visibility culling based on distance
+    const isVisible = dist <= 800;
+    if (isVisible !== visibleRef.current) {
+      visibleRef.current = isVisible;
+      meshRef.current.visible = isVisible;
+    }
+
+    if (isVisible) {
+      // 2. Material LOD (Basic vs Standard)
       const shouldBeBasic = dist > 300;
-      if (shouldBeBasic !== useBasic) {
-        setUseBasic(shouldBeBasic);
+      if (shouldBeBasic !== useBasicRef.current) {
+        useBasicRef.current = shouldBeBasic;
+        meshRef.current.material = shouldBeBasic 
+          ? (isDark ? darkMatBasic : neonMatBasic)
+          : (isDark ? darkMatStandard : neonMatStandard);
       }
+
+      // 3. Dynamic physics mounting (load <250m, unload >300m to avoid flickering)
+      if (dist < 250) {
+        if (!physicsActive) setPhysicsActive(true);
+      } else if (dist > 300) {
+        if (physicsActive) setPhysicsActive(false);
+      }
+    } else {
+      if (physicsActive) setPhysicsActive(false);
     }
   });
 
-  const material = useBasic 
-    ? (isDark ? darkMatBasic : neonMatBasic)
-    : (isDark ? darkMatStandard : neonMatStandard);
-
   return (
-    <group visible={visible}>
-      <InstancedRigidBodies
-        positions={instances.positions}
-        rotations={instances.rotations}
-        scales={instances.scales}
-        colliders="cuboid"
-      >
-        <instancedMesh
-          ref={meshRef}
-          args={[boxGeometry, material, count]}
-          frustumCulled={true} // Re-enable Frustum Culling! The massive Bounding Sphere will prevent pop-in!
-        />
-      </InstancedRigidBodies>
+    <group>
+      {/* The visual mesh remains mounted. We control its visibility directly via meshRef.current.visible */}
+      <instancedMesh
+        ref={meshRef}
+        args={[boxGeometry, isDark ? darkMatStandard : neonMatStandard, count]}
+        frustumCulled={true}
+      />
+      
+      {/* Physics colliders are only loaded when within 250m */}
+      {physicsActive && (
+        <InstancedRigidBodies
+          positions={instances.positions}
+          rotations={instances.rotations}
+          scales={instances.scales}
+          colliders="cuboid"
+          type="fixed"
+        >
+          <instancedMesh args={[boxGeometry, null, count]} visible={false} />
+        </InstancedRigidBodies>
+      )}
     </group>
   );
 }
