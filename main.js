@@ -311,6 +311,13 @@ function initThreeJS() {
        showNotification(`Error: Could not find /models/${modelName}`);
     });
   });
+
+  window.addEventListener('setToolMode', (e) => {
+    if (playerIsGod) {
+      StudioManager.setToolMode(e.detail);
+      showNotification(`Tool Selected: ${e.detail.toUpperCase().replace('_', ' ')}`);
+    }
+  });
   
   window.addEventListener('shiftWorld', (e) => {
     const targetWorld = e.detail;
@@ -1150,14 +1157,99 @@ window.addEventListener('drop', (event) => {
       }
     );
   } 
+  else if (file.name.endsWith('.obj')) {
+    showNotification(`Importing ${file.name}...`);
+    const url = URL.createObjectURL(file);
+    import('three/examples/jsm/loaders/OBJLoader.js').then(({ OBJLoader }) => {
+       new OBJLoader().load(url, (model) => {
+          model.userData.isEditable = true;
+          model.userData.modelName = file.name;
+          model.uuid = THREE.MathUtils.generateUUID();
+
+          // Spawn in front of player
+          const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
+          model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
+          model.updateMatrixWorld();
+
+          // Enable shadows and default material if missing
+          const defaultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7 });
+          model.traverse(child => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+              if (Array.isArray(child.material)) {
+                child.material = child.material.map(m => defaultMat);
+              } else if (!child.material) {
+                child.material = defaultMat;
+              }
+            }
+          });
+
+          // Physics setup
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3(); box.getSize(size);
+          
+          if (Math.max(size.x, size.y, size.z) > 40) {
+            import('./src/physics.js').then(({ createTrimeshCollider }) => {
+              createTrimeshCollider(model);
+            });
+            showNotification(`Generated Trimesh Physics for ${file.name}`);
+          } else {
+            const center = new THREE.Vector3(); box.getCenter(center);
+            import('./src/physics.js').then(({ addStaticBox }) => {
+               addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
+            });
+          }
+
+          worldGroup.add(model);
+          objects.push(model);
+          URL.revokeObjectURL(url);
+          window.dispatchEvent(new Event('publishWorld'));
+       }, undefined, (error) => {
+          showNotification(`Failed to load ${file.name}`);
+          URL.revokeObjectURL(url);
+       });
+    });
+  }
   else if (file.name.endsWith('.gltf')) {
     showNotification("Error: Please drop a .glb file. Standard .gltf files require their .bin and textures.");
   }
   else if (file.type.startsWith('image/')) {
-    // Phase 3: AI Texture Applicator
+    // 1. Direct Material Painting: Check if user dropped the texture ON an object
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    
+    const intersects = raycaster.intersectObjects(worldGroup.children, true);
+    
+    if (intersects.length > 0 && intersects[0].object.isMesh) {
+      const hitObj = intersects[0].object;
+      showNotification(`Applying texture to ${hitObj.name || 'object'}...`);
+      const url = URL.createObjectURL(file);
+      new THREE.TextureLoader().load(url, (texture) => {
+        texture.flipY = false;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        
+        if (Array.isArray(hitObj.material)) {
+           hitObj.material = hitObj.material.map(m => {
+             const c = m.clone(); c.map = texture; c.needsUpdate = true; return c;
+           });
+        } else {
+           hitObj.material = hitObj.material.clone();
+           hitObj.material.map = texture;
+           hitObj.material.needsUpdate = true;
+        }
+      });
+      return;
+    }
+
+    // 2. AI Semantic Decorator: If dropped in the sky, let the AI decide where it goes based on tags
     showNotification(`AI analyzing texture ${file.name}...`);
     import('./src/systems/TextureAI.js').then(({ applyTextureAI }) => {
-       applyTextureAI(file, scene);
+       applyTextureAI(file, scene, showNotification);
     });
   }
 });

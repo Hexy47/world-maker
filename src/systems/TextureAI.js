@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * asks the Groq LLM backend which tag matches the texture,
  * and seamlessly applies the material.
  */
-export async function applyTextureAI(file, scene) {
+export async function applyTextureAI(file, scene, showNotification) {
   const fileName = file.name;
   
   // 1. Gather semantic tags from the scene
@@ -27,6 +27,7 @@ export async function applyTextureAI(file, scene) {
 
   const tagsArray = Array.from(availableTags);
   if (tagsArray.length === 0) {
+    if (showNotification) showNotification("AI Texture Error: No semantic tags found in world to apply it to.");
     console.warn("AI Texture Error: No semantic tags found in world.");
     return;
   }
@@ -68,13 +69,13 @@ export async function applyTextureAI(file, scene) {
             }
          });
          
-         console.log(`[TextureAI] Successfully mapped ${fileName} to [${data.selectedTag}]!`);
+         if (showNotification) showNotification(`AI mapped ${fileName} to [${data.selectedTag}]!`);
          URL.revokeObjectURL(url);
        });
     } else {
-       console.warn(`[TextureAI] AI could not match ${fileName} to any objects.`);
+       if (showNotification) showNotification(`AI could not find a logical match for ${fileName}.`);
     }
   } catch (e) {
-    console.error(`[TextureAI] Backend Error: ${e.message}`);
+    if (showNotification) showNotification(`AI Error: ${e.message}`);
   }
 }

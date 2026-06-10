@@ -178,14 +178,32 @@ export class UIManager {
     publishBtn.style.padding = '10px';
     publishBtn.style.fontSize = '0.9rem';
     
+    const toolsSection = document.createElement('div');
+    toolsSection.style.marginTop = '15px';
+    toolsSection.style.borderTop = '1px solid #444';
+    toolsSection.style.paddingTop = '10px';
+    toolsSection.innerHTML = `
+      <div style="font-size: 10px; color: #888; margin-bottom: 5px;">GOD TOOLS</div>
+      <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px;">
+        <button id="tool-transform" class="btn-primary" style="flex:1; padding:5px;">Move</button>
+        <button id="tool-raise" class="btn-primary" style="flex:1; padding:5px; background:#3d4f35">Raise</button>
+        <button id="tool-lower" class="btn-primary" style="flex:1; padding:5px; background:#3d4f35">Lower</button>
+        <button id="tool-flatten" class="btn-primary" style="flex:1; padding:5px; background:#3d4f35">Flatten</button>
+      </div>
+      <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+        <button id="tool-fix_texture" class="btn-primary" style="flex:1; padding:5px; background:#aa5500">Fix Texture</button>
+        <button id="tool-eraser" class="btn-danger" style="flex:1; padding:5px;">Eraser</button>
+      </div>
+    `;
+    studioUI.appendChild(toolsSection);
+
     // Asset Importer
     const assetSection = document.createElement('div');
-    assetSection.style.marginTop = '15px';
     assetSection.style.borderTop = '1px solid #444';
     assetSection.style.paddingTop = '10px';
     assetSection.innerHTML = `
       <div style="font-size: 10px; color: #888; margin-bottom: 5px;">IMPORT CUSTOM GLTF</div>
-      <div style="display: flex; gap: 5px;">
+      <div style="display: flex; gap: 5px; margin-bottom: 10px;">
         <input type="text" id="model-input" placeholder="model.glb" style="flex: 1; padding: 5px; background: #222; color: white; border: 1px solid #555;" />
         <button id="spawn-btn" class="btn-primary" style="padding: 5px 10px;">Spawn</button>
       </div>
@@ -199,6 +217,16 @@ export class UIManager {
       document.getElementById('spawn-btn').addEventListener('click', () => {
         const val = document.getElementById('model-input').value;
         if (val) window.dispatchEvent(new CustomEvent('spawnModel', { detail: val }));
+      });
+      
+      const tools = ['transform', 'raise', 'lower', 'flatten', 'fix_texture', 'eraser'];
+      tools.forEach(tool => {
+         const btn = document.getElementById(`tool-${tool}`);
+         if (btn) {
+           btn.addEventListener('click', () => {
+             window.dispatchEvent(new CustomEvent('setToolMode', { detail: tool }));
+           });
+         }
       });
     }, 100);
     studioUI.appendChild(publishBtn);
