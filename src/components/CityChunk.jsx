@@ -55,13 +55,20 @@ export function CityChunk({ chunkData, isDark }) {
     return { positions, scales, rotations, colors };
   }, [buildings, count]);
 
-  // Apply colors directly to InstancedMesh on mount
+  // Apply colors directly to InstancedMesh on mount and set Bounding Sphere
   useFrame(() => {
     if (meshRef.current && !meshRef.current.__colorsApplied) {
       for (let i = 0; i < count; i++) {
         meshRef.current.setColorAt(i, buildings[i].color);
       }
       meshRef.current.instanceColor.needsUpdate = true;
+      
+      // The Data Tower acts as the center of the chunk's spatial occlusion
+      // We give it a massive 600m radius sphere. 
+      // If this massive sphere leaves your screen (e.g. it's completely behind you), it is culled!
+      meshRef.current.geometry.computeBoundingSphere();
+      meshRef.current.boundingSphere = new THREE.Sphere(new THREE.Vector3(0,0,0), 600);
+      
       meshRef.current.__colorsApplied = true;
     }
   });
@@ -76,7 +83,9 @@ export function CityChunk({ chunkData, isDark }) {
     } else {
       if (!visible) setVisible(true);
       
-      const shouldBeBasic = dist > 600;
+      // MASSIVE FPS BOOST: Swap to Basic Material at 300m instead of 600m
+      // PBR is too expensive to run on thousands of buildings far away
+      const shouldBeBasic = dist > 300;
       if (shouldBeBasic !== useBasic) {
         setUseBasic(shouldBeBasic);
       }
@@ -89,10 +98,6 @@ export function CityChunk({ chunkData, isDark }) {
 
   return (
     <group visible={visible}>
-      {/* 
-        InstancedRigidBodies creates one physics collider per instance automatically!
-        It syncs position and scale perfectly.
-      */}
       <InstancedRigidBodies
         positions={instances.positions}
         rotations={instances.rotations}
@@ -102,7 +107,7 @@ export function CityChunk({ chunkData, isDark }) {
         <instancedMesh
           ref={meshRef}
           args={[boxGeometry, material, count]}
-          frustumCulled={false} // Disable screen culling
+          frustumCulled={true} // Re-enable Frustum Culling! The massive Bounding Sphere will prevent pop-in!
         />
       </InstancedRigidBodies>
     </group>
