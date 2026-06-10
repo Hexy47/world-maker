@@ -13,7 +13,8 @@ export function generateCityData() {
   for (let x = -cityExtent; x < cityExtent; x += blockSize + roadWidth) {
     for (let z = -cityExtent; z < cityExtent; z += blockSize + roadWidth) {
       if (Math.abs(x) < 50 && Math.abs(z) < 50) continue;
-      if (Math.random() > 0.8) continue;
+      // Skip 30% of blocks (instead of 20%) to create more realistic open space, parks, and plazas, which boosts FPS
+      if (Math.random() > 0.7) continue;
 
       const blockW = blockSize;
       const blockD = blockSize;
