@@ -23,15 +23,6 @@ export function CityChunk({ chunkData, isDark }) {
   const visibleRef = useRef(true);
   const frameCountRef = useRef(Math.floor(Math.random() * 10));
 
-  // Instantiate a unique geometry per chunk to allow setting custom culling bounding spheres without conflicts
-  const chunkGeometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
-
-  React.useEffect(() => {
-    return () => {
-      chunkGeometry.dispose();
-    };
-  }, [chunkGeometry]);
-
   // Compute exact center in World Coordinates
   const towerX = chunkData.cx * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
   const towerZ = chunkData.cz * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
@@ -104,7 +95,7 @@ export function CityChunk({ chunkData, isDark }) {
     const dist = Math.hypot(towerX - cam.x, towerZ - cam.z);
 
     // 1. Frustum visibility culling based on distance
-    const isVisible = dist <= 500;
+    const isVisible = dist <= 800;
     if (isVisible !== visibleRef.current) {
       visibleRef.current = isVisible;
       meshRef.current.visible = isVisible;
@@ -112,7 +103,7 @@ export function CityChunk({ chunkData, isDark }) {
 
     if (isVisible) {
       // 2. Material LOD (Basic vs Standard)
-      const shouldBeBasic = dist > 150;
+      const shouldBeBasic = dist > 200;
       const targetMaterial = shouldBeBasic 
         ? (isDark ? darkMatBasic : neonMatBasic)
         : (isDark ? darkMatStandard : neonMatStandard);
@@ -136,9 +127,11 @@ export function CityChunk({ chunkData, isDark }) {
       {/* The visual mesh remains mounted. We control its visibility directly via meshRef.current.visible */}
       <instancedMesh
         ref={meshRef}
-        args={[chunkGeometry, isDark ? darkMatStandard : neonMatStandard, count]}
+        args={[null, isDark ? darkMatStandard : neonMatStandard, count]}
         frustumCulled={true}
-      />
+      >
+        <boxGeometry />
+      </instancedMesh>
       
       {/* Physics colliders are only loaded when within 250m */}
       {physicsActive && (
