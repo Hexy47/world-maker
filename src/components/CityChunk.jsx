@@ -8,8 +8,8 @@ const CITY_EXTENT = 1200;
 
 const darkMatStandard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 30, vertexColors: true });
 const neonMatStandard = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, shininess: 30, vertexColors: true });
-const darkMatBasic = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
-const neonMatBasic = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
+const darkMatBasic = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+const neonMatBasic = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, vertexColors: true });
 const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 export function CityChunk({ chunkData, isDark }) {
@@ -103,30 +103,20 @@ export function CityChunk({ chunkData, isDark }) {
     const cam = state.camera.position;
     const dist = Math.hypot(towerX - cam.x, towerZ - cam.z);
 
-    // 1. Frustum visibility culling based on distance
-    const isVisible = dist <= 800;
-    if (isVisible !== visibleRef.current) {
-      visibleRef.current = isVisible;
-      meshRef.current.visible = isVisible;
+    // 1. Material LOD (Basic vs Standard)
+    // Swap from per-pixel Phong to per-vertex Lambert at 200m (smooth lit transition, no 'light switch' effect)
+    const shouldBeBasic = dist > 200;
+    const targetMaterial = shouldBeBasic 
+      ? (isDark ? darkMatBasic : neonMatBasic)
+      : (isDark ? darkMatStandard : neonMatStandard);
+    if (meshRef.current.material !== targetMaterial) {
+      meshRef.current.material = targetMaterial;
     }
 
-    if (isVisible) {
-      // 2. Material LOD (Basic vs Standard)
-      const shouldBeBasic = dist > 200;
-      const targetMaterial = shouldBeBasic 
-        ? (isDark ? darkMatBasic : neonMatBasic)
-        : (isDark ? darkMatStandard : neonMatStandard);
-      if (meshRef.current.material !== targetMaterial) {
-        meshRef.current.material = targetMaterial;
-      }
-
-      // 3. Dynamic physics mounting (load <250m, unload >300m to avoid flickering)
-      if (dist < 250) {
-        if (!physicsActive) setPhysicsActive(true);
-      } else if (dist > 300) {
-        if (physicsActive) setPhysicsActive(false);
-      }
-    } else {
+    // 2. Dynamic physics mounting (load <250m, unload >300m to avoid flickering)
+    if (dist < 250) {
+      if (!physicsActive) setPhysicsActive(true);
+    } else if (dist > 300) {
       if (physicsActive) setPhysicsActive(false);
     }
   });
