@@ -6,8 +6,8 @@ import * as THREE from 'three';
 const CHUNK_SIZE = 400;
 const CITY_EXTENT = 1200;
 
-const darkMatStandard = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.3, vertexColors: true });
-const neonMatStandard = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.6, metalness: 0.3, vertexColors: true });
+const darkMatStandard = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 30, vertexColors: true });
+const neonMatStandard = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, shininess: 30, vertexColors: true });
 const darkMatBasic = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
 const neonMatBasic = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
 const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -22,6 +22,15 @@ export function CityChunk({ chunkData, isDark }) {
   const [physicsActive, setPhysicsActive] = useState(false);
   const visibleRef = useRef(true);
   const frameCountRef = useRef(Math.floor(Math.random() * 10));
+
+  // Instantiate a unique geometry per chunk to allow setting custom culling bounding spheres without conflicts
+  const chunkGeometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+
+  React.useEffect(() => {
+    return () => {
+      chunkGeometry.dispose();
+    };
+  }, [chunkGeometry]);
 
   // Compute exact center in World Coordinates
   const towerX = chunkData.cx * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
@@ -127,11 +136,9 @@ export function CityChunk({ chunkData, isDark }) {
       {/* The visual mesh remains mounted. We control its visibility directly via meshRef.current.visible */}
       <instancedMesh
         ref={meshRef}
-        args={[null, isDark ? darkMatStandard : neonMatStandard, count]}
+        args={[chunkGeometry, isDark ? darkMatStandard : neonMatStandard, count]}
         frustumCulled={true}
-      >
-        <boxGeometry />
-      </instancedMesh>
+      />
       
       {/* Physics colliders are only loaded when within 250m */}
       {physicsActive && (
