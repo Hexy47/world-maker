@@ -56,6 +56,19 @@ export function UIOverlay() {
     return () => document.removeEventListener('keydown', handleKey);
   }, []);
 
+  const lockPointer = () => {
+    try {
+      const promise = document.body.requestPointerLock({
+        unadjustedMovement: true,
+      });
+      if (promise && promise.catch) {
+        promise.catch(() => document.body.requestPointerLock());
+      }
+    } catch (err) {
+      document.body.requestPointerLock();
+    }
+  };
+
   return (
     <div id="ui-layer" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10 }}>
       
@@ -82,7 +95,7 @@ export function UIOverlay() {
           pointerEvents: 'auto', color: 'white'
         }}>
           <h1>PAUSED</h1>
-          <button style={btnStyle} onClick={() => document.body.requestPointerLock()}>Resume Game</button>
+          <button style={btnStyle} onClick={lockPointer}>Resume Game</button>
           <button style={btnStyle} onClick={() => setShowSettings(true)}>Settings</button>
           <button style={{...btnStyle, background: '#ff4444'}}>Leave Game</button>
         </div>
@@ -112,7 +125,7 @@ export function UIOverlay() {
           <button style={shiftBtnStyle}>Load The Sandbox</button>
           <button style={shiftBtnStyle}>Load The Lab</button>
           <button style={shiftBtnStyle}>Load The Sim (GTA City)</button>
-          <button style={btnStyle} onClick={() => { setShowShift(false); document.body.requestPointerLock(); }}>Close Panel (Q)</button>
+          <button style={btnStyle} onClick={() => { setShowShift(false); lockPointer(); }}>Close Panel (Q)</button>
         </div>
       )}
 

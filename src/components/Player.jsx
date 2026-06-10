@@ -38,7 +38,20 @@ export const Player = React.forwardRef(({ spawnPosition = [0, 10, 0] }, ref) => 
 
   // Lock pointer on click
   React.useEffect(() => {
-    const handleClick = () => document.body.requestPointerLock();
+    const handleClick = () => {
+      try {
+        const promise = document.body.requestPointerLock({
+          unadjustedMovement: true,
+        });
+        if (promise && promise.catch) {
+          promise.catch(() => {
+            document.body.requestPointerLock();
+          });
+        }
+      } catch (err) {
+        document.body.requestPointerLock();
+      }
+    };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, []);

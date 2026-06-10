@@ -21,6 +21,16 @@ export function CityChunk({ chunkData, isDark }) {
 
   const [physicsActive, setPhysicsActive] = useState(false);
   const visibleRef = useRef(true);
+  const frameCountRef = useRef(Math.floor(Math.random() * 10));
+
+  // Instantiate a unique geometry per chunk to allow setting custom culling bounding spheres without conflicts
+  const chunkGeometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+
+  React.useEffect(() => {
+    return () => {
+      chunkGeometry.dispose();
+    };
+  }, [chunkGeometry]);
 
   // Compute exact center in World Coordinates
   const towerX = chunkData.cx * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
@@ -75,8 +85,8 @@ export function CityChunk({ chunkData, isDark }) {
       // We give it a massive 600m radius sphere. 
       // If this massive sphere leaves your screen (e.g. it's completely behind you), it is culled!
       meshRef.current.geometry.computeBoundingSphere();
-      // FIX CULLING BUG: Set the bounding sphere center to the chunk's actual center (towerX, 0, towerZ)
-      meshRef.current.boundingSphere = new THREE.Sphere(new THREE.Vector3(towerX, 0, towerZ), 600);
+      // FIX CULLING BUG: Set the bounding sphere center of our unique geometry to the chunk's actual center (towerX, 0, towerZ)
+      meshRef.current.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(towerX, 0, towerZ), 600);
       
       meshRef.current.__colorsApplied = true;
     }
@@ -85,6 +95,10 @@ export function CityChunk({ chunkData, isDark }) {
   // Distance tracking for Culling & LOD & Physics (direct DOM/Three.js manipulation to avoid state updates)
   useFrame((state) => {
     if (!meshRef.current) return;
+
+    frameCountRef.current++;
+    // Run on mount (first 10 frames), then throttle to once every 10 frames to optimize JS execution
+    if (frameCountRef.current > 10 && frameCountRef.current % 10 !== 0) return;
 
     const cam = state.camera.position;
     const dist = Math.hypot(towerX - cam.x, towerZ - cam.z);
@@ -122,7 +136,7 @@ export function CityChunk({ chunkData, isDark }) {
       {/* The visual mesh remains mounted. We control its visibility directly via meshRef.current.visible */}
       <instancedMesh
         ref={meshRef}
-        args={[boxGeometry, isDark ? darkMatStandard : neonMatStandard, count]}
+        args={[chunkGeometry, isDark ? darkMatStandard : neonMatStandard, count]}
         frustumCulled={true}
       />
       
