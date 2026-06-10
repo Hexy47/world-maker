@@ -27,7 +27,7 @@ export default function App() {
           { name: 'sprint', keys: ['Shift'] },
         ]}
       >
-        <Canvas camera={{ position: [0, 10, 0], fov: 75, near: 0.1, far: 2000 }}>
+        <Canvas dpr={1} camera={{ position: [0, 10, 0], fov: 75, near: 0.1, far: 2000 }}>
           <color attach="background" args={['#0a0a1a']} />
           <ambientLight intensity={SETTINGS.AMBIENT_INTENSITY} />
           <directionalLight position={[500, 500, -500]} intensity={SETTINGS.SUN_INTENSITY} />

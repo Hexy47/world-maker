@@ -10,7 +10,9 @@ export function NetworkManager({ localPlayerBodyRef }) {
   const lastEmitRef = useRef(0);
 
   useEffect(() => {
-    socket = io();
+    // Connect to port 3000 explicitly in development mode to avoid port conflicts and retry loops
+    const socketUrl = import.meta.env.DEV ? 'http://localhost:3000' : undefined;
+    socket = io(socketUrl);
     
     socket.on('init', (data) => {
       // We don't need to do anything special here in React yet
@@ -59,7 +61,7 @@ export function NetworkManager({ localPlayerBodyRef }) {
 
   // Broadcast our local player's position
   useFrame((state, delta) => {
-    if (!socket || !localPlayerBodyRef?.current) return;
+    if (!socket || !socket.connected || !localPlayerBodyRef?.current) return;
     
     const time = state.clock.elapsedTime * 1000;
     // Throttle network emits to ~15Hz to save bandwidth

@@ -90,7 +90,7 @@ export function CityChunk({ chunkData, isDark }) {
     const dist = Math.hypot(towerX - cam.x, towerZ - cam.z);
 
     // 1. Frustum visibility culling based on distance
-    const isVisible = dist <= 800;
+    const isVisible = dist <= 500;
     if (isVisible !== visibleRef.current) {
       visibleRef.current = isVisible;
       meshRef.current.visible = isVisible;
@@ -98,7 +98,7 @@ export function CityChunk({ chunkData, isDark }) {
 
     if (isVisible) {
       // 2. Material LOD (Basic vs Standard)
-      const shouldBeBasic = dist > 300;
+      const shouldBeBasic = dist > 150;
       const targetMaterial = shouldBeBasic 
         ? (isDark ? darkMatBasic : neonMatBasic)
         : (isDark ? darkMatStandard : neonMatStandard);
