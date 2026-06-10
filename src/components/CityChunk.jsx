@@ -21,7 +21,6 @@ export function CityChunk({ chunkData, isDark }) {
 
   const [physicsActive, setPhysicsActive] = useState(false);
   const visibleRef = useRef(true);
-  const useBasicRef = useRef(false);
 
   // Compute exact center in World Coordinates
   const towerX = chunkData.cx * CHUNK_SIZE - CITY_EXTENT + CHUNK_SIZE / 2;
@@ -51,13 +50,26 @@ export function CityChunk({ chunkData, isDark }) {
     return { positions, scales, rotations };
   }, [buildings, count]);
 
-  // Apply colors directly to InstancedMesh on mount and set Bounding Sphere
+  // Apply colors and matrices directly to InstancedMesh on mount and set Bounding Sphere
   useFrame(() => {
     if (meshRef.current && !meshRef.current.__colorsApplied) {
+      const tempMatrix = new THREE.Matrix4();
+      const tempPos = new THREE.Vector3();
+      const tempRot = new THREE.Quaternion();
+      const tempScale = new THREE.Vector3();
+
       for (let i = 0; i < count; i++) {
-        meshRef.current.setColorAt(i, buildings[i].color);
+        const b = buildings[i];
+        meshRef.current.setColorAt(i, b.color);
+        
+        tempPos.set(b.x, b.y, b.z);
+        tempScale.set(b.width, b.height, b.depth);
+        tempRot.set(0, 0, 0, 1); // no rotation for box buildings
+        tempMatrix.compose(tempPos, tempRot, tempScale);
+        meshRef.current.setMatrixAt(i, tempMatrix);
       }
       meshRef.current.instanceColor.needsUpdate = true;
+      meshRef.current.instanceMatrix.needsUpdate = true;
       
       // The Data Tower acts as the center of the chunk's spatial occlusion
       // We give it a massive 600m radius sphere. 
@@ -87,11 +99,11 @@ export function CityChunk({ chunkData, isDark }) {
     if (isVisible) {
       // 2. Material LOD (Basic vs Standard)
       const shouldBeBasic = dist > 300;
-      if (shouldBeBasic !== useBasicRef.current) {
-        useBasicRef.current = shouldBeBasic;
-        meshRef.current.material = shouldBeBasic 
-          ? (isDark ? darkMatBasic : neonMatBasic)
-          : (isDark ? darkMatStandard : neonMatStandard);
+      const targetMaterial = shouldBeBasic 
+        ? (isDark ? darkMatBasic : neonMatBasic)
+        : (isDark ? darkMatStandard : neonMatStandard);
+      if (meshRef.current.material !== targetMaterial) {
+        meshRef.current.material = targetMaterial;
       }
 
       // 3. Dynamic physics mounting (load <250m, unload >300m to avoid flickering)

@@ -25,8 +25,8 @@ export function GTAWorld() {
       {/* Render all chunks */}
       {chunkKeys.map(key => {
         const chunk = cityData[key];
-        // Only spawn DataTower in roughly 1/3 of the chunks using a deterministic modulo check
-        const shouldSpawnTower = (Math.abs(chunk.cx + chunk.cz * 3) % 3) === 0;
+        // Only spawn DataTower in roughly 1/9 of the chunks to reduce by 2/3 and spread out better
+        const shouldSpawnTower = (Math.abs(chunk.cx * 7 + chunk.cz * 11) % 9) === 0;
 
         return (
           <group key={key}>

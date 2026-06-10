@@ -33,7 +33,7 @@ export default function App() {
           <directionalLight position={[500, 500, -500]} intensity={SETTINGS.SUN_INTENSITY} />
           
           <Suspense fallback={null}>
-            <Physics timeStep="vary" gravity={[0, SETTINGS.GRAVITY, 0]}>
+            <Physics gravity={[0, SETTINGS.GRAVITY, 0]}>
               <GTAWorld />
               <Player ref={playerRef} />
               <NetworkManager localPlayerBodyRef={playerRef} />

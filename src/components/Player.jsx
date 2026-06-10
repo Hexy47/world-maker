@@ -21,8 +21,14 @@ export const Player = React.forwardRef(({ spawnPosition = [0, 10, 0] }, ref) => 
   React.useEffect(() => {
     const handleMouseMove = (e) => {
       if (document.pointerLockElement) {
-        yawRef.current -= e.movementX * 0.002;
-        pitchRef.current -= e.movementY * 0.002;
+        let mx = e.movementX;
+        let my = e.movementY;
+        // Clamp extreme mouse deltas to prevent the 180-degree snap glitch
+        if (Math.abs(mx) > 100) mx = Math.sign(mx) * 100;
+        if (Math.abs(my) > 100) my = Math.sign(my) * 100;
+        
+        yawRef.current -= mx * 0.002;
+        pitchRef.current -= my * 0.002;
         pitchRef.current = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchRef.current));
       }
     };
