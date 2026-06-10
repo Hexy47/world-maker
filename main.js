@@ -217,8 +217,11 @@ function initThreeJS() {
     
     // NATIVE PAUSE MENU UX: When ESC is pressed, pointer unlocks natively.
     if (!controls.isLocked && uiLayer.style.display === 'block') {
-      // Don't show pause menu if the God Menu is open
-      if (!window.worldShiftMenu || window.worldShiftMenu.style.display !== 'flex') {
+      // Don't show pause menu if the God Menu, World Studio, or God Panel is open
+      const isShiftMenuOpen = window.worldShiftMenu && window.worldShiftMenu.style.display === 'flex';
+      const isStudioActive = StudioManager && StudioManager.isActive;
+      
+      if (!isShiftMenuOpen && !isStudioActive && !godPanelOpen) {
         if (window.pauseMenu) window.pauseMenu.style.display = 'flex';
       }
     }
@@ -1080,3 +1083,81 @@ function toggleGodPanel() {
   godPanelEl.style.display = godPanelOpen ? 'block' : 'none';
   if (godPanelOpen) controls.unlock();
 }
+
+// ─── DRAG AND DROP PIPELINE ──────────────────────────────────────────────────
+window.addEventListener('dragover', (e) => e.preventDefault());
+
+window.addEventListener('drop', (event) => {
+  event.preventDefault();
+  if (!playerIsGod) return;
+
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+
+  if (file.name.endsWith('.glb')) {
+    showNotification(`Importing ${file.name}...`);
+    const url = URL.createObjectURL(file);
+    new GLTFLoader().load(
+      url, 
+      (gltf) => {
+        const model = gltf.scene;
+        model.userData.isEditable = true;
+        model.userData.modelName = file.name;
+        model.uuid = THREE.MathUtils.generateUUID();
+
+        // Spawn in front of player
+        const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
+        model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
+        model.updateMatrixWorld();
+
+        // Enable shadows
+        model.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        // Calculate bounds for physics
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3(); box.getSize(size);
+        
+        // If it's huge (like a mountain > 40 units), use Trimesh!
+        if (Math.max(size.x, size.y, size.z) > 40) {
+          import('./src/physics.js').then(({ createTrimeshCollider }) => {
+            createTrimeshCollider(model);
+          });
+          showNotification(`Generated Trimesh Physics for ${file.name}`);
+        } else {
+          // Normal static box for now
+          const center = new THREE.Vector3(); box.getCenter(center);
+          import('./src/physics.js').then(({ addStaticBox }) => {
+             addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
+          });
+        }
+
+        worldGroup.add(model);
+        objects.push(model);
+        URL.revokeObjectURL(url);
+        
+        // Auto-publish so AI and other players see it
+        window.dispatchEvent(new Event('publishWorld'));
+      }, 
+      undefined, 
+      (error) => {
+        showNotification(`Failed to load ${file.name}`);
+        URL.revokeObjectURL(url);
+      }
+    );
+  } 
+  else if (file.name.endsWith('.gltf')) {
+    showNotification("Error: Please drop a .glb file. Standard .gltf files require their .bin and textures.");
+  }
+  else if (file.type.startsWith('image/')) {
+    // Phase 3: AI Texture Applicator
+    showNotification(`AI analyzing texture ${file.name}...`);
+    import('./src/systems/TextureAI.js').then(({ applyTextureAI }) => {
+       applyTextureAI(file, scene);
+    });
+  }
+});

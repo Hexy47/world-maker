@@ -89,26 +89,17 @@ export function loadLabWorld(scene) {
   console.log('[WorldManager] The Lab loaded');
 }
 
-// ─── THE SANDBOX (Flat Endless Grid) ────────────────────────────────────────
+import { initTerrain } from './TerrainManager.js';
+
+// ─── THE SANDBOX (Dynamic Terrain Sandbox) ──────────────────────────────────
 export function loadSandboxWorld(scene) {
   clearCurrentWorld(scene);
 
-  const floorGeo = new THREE.PlaneGeometry(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE);
-  const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x222222,
-    roughness: 0.8,
-  });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
+  // Initialize the dynamic sculpted terrain mesh and heightfield physics
+  const floor = initTerrain(scene, SETTINGS.GROUND_SIZE, 128);
   worldGroup.add(floor);
 
-  // Massive grid helper
-  const gridHelper = new THREE.GridHelper(SETTINGS.GROUND_SIZE, SETTINGS.GROUND_SIZE / 10, 0x555555, 0x333333);
-  gridHelper.position.y = 0.05;
-  worldGroup.add(gridHelper);
-
-  addStaticBox(0, -0.5, 0, SETTINGS.GROUND_SIZE / 2, 0.5, SETTINGS.GROUND_SIZE / 2);
+  // Note: We no longer add a static box for the ground, because TerrainManager handles the heightfield collider!
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.5);
   worldGroup.add(ambient);

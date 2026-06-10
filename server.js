@@ -174,9 +174,22 @@ io.on('connection', (socket) => {
     const player = gameStates[currentRoom]?.players[socket.id];
     if (!currentRoom || !player) return;
 
-    if (!currentRoom || !gameStates[currentRoom]) {
-    console.error('[Chat] Invalid room or game state:', currentRoom, gameStates);
+    if (!currentRoom) {
+    console.error('[API] Invalid room:', currentRoom);
+    res.status(400).json({ error: 'Invalid room' });
     return;
+  }
+
+  const gameState = gameStates[currentRoom];
+  if (!gameState) {
+    console.error('[API] Game state not found for room:', currentRoom);
+    res.status(404).json({ error: 'Game state not found' });
+    return;
+  }
+
+  // Ensure latestTelemetry is initialized
+  if (!gameState.latestTelemetry) {
+    gameState.latestTelemetry = {};
   }
   const text = String(data.text || '').trim().slice(0, 200);
   
@@ -227,6 +240,49 @@ app.get('/status', (req, res) => {
 app.post('/api/reload', (req, res) => {
   io.emit('forceReload');
   res.json({ success: true });
+});
+
+import Groq from 'groq-sdk';
+let groqClient = null;
+
+app.post('/api/analyze-texture', async (req, res) => {
+  try {
+    if (!groqClient) {
+      groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    }
+    
+    const { textureName, availableTags } = req.body;
+    
+    if (!availableTags || availableTags.length === 0) {
+      return res.json({ selectedTag: null });
+    }
+
+    const systemPrompt = `You are an AI World Decorator. You map raw texture filenames to semantic object tags.
+You must output ONLY valid JSON in this format: {"selectedTag": "the_tag_name"} or {"selectedTag": null} if nothing fits.
+Do not write anything else.
+Texture: "${textureName}"
+Available Tags: [${availableTags.join(', ')}]
+Which tag makes the most logical sense to apply this texture to?`;
+
+    const completion = await groqClient.chat.completions.create({
+      messages: [{ role: 'system', content: systemPrompt }],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.1,
+      max_tokens: 30
+    });
+
+    const raw = completion.choices[0]?.message?.content || '{}';
+    const match = raw.match(/\{.*?\}/s);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      res.json({ selectedTag: parsed.selectedTag });
+    } else {
+      res.json({ selectedTag: null });
+    }
+  } catch (e) {
+    console.log(`[TextureAI] Groq Error: ${e.message}`);
+    res.json({ selectedTag: null, error: e.message });
+  }
 });
 
 // ─── Boot ────────────────────────────────────────────────────────────────────

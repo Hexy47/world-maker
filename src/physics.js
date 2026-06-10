@@ -64,6 +64,54 @@ export function addDynamicBlock(x, y, z, size) {
   return body;
 }
 
+// ─── Trimesh Collider (For large imported GLTFs) ─────────────────────────────
+export function createTrimeshCollider(meshGroup) {
+  if (!world) return null;
+
+  meshGroup.traverse((child) => {
+    if (child.isMesh && child.geometry) {
+      const geometry = child.geometry;
+      const vertices = geometry.attributes.position.array;
+      let indices;
+      
+      if (geometry.index) {
+        indices = geometry.index.array;
+      } else {
+        indices = new Uint32Array(vertices.length / 3);
+        for (let i = 0; i < indices.length; i++) indices[i] = i;
+      }
+
+      // Extract world transform
+      const pos = new THREE.Vector3();
+      const rot = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      child.matrixWorld.decompose(pos, rot, scale);
+
+      // CRITICAL FIX: Rapier trimesh uses raw local vertices, so we must manually apply the scale
+      const scaledVertices = new Float32Array(vertices.length);
+      for (let i = 0; i < vertices.length; i += 3) {
+        scaledVertices[i]   = vertices[i]   * scale.x;
+        scaledVertices[i+1] = vertices[i+1] * scale.y;
+        scaledVertices[i+2] = vertices[i+2] * scale.z;
+      }
+
+      const colliderDesc = RAPIER.ColliderDesc.trimesh(
+        scaledVertices,
+        new Uint32Array(indices)
+      );
+
+      const rigidBodyDesc = RAPIER.RigidBodyDesc.fixed();
+      
+      // Apply the mesh's world position/rotation
+      rigidBodyDesc.setTranslation(pos.x, pos.y, pos.z);
+      rigidBodyDesc.setRotation({ x: rot.x, y: rot.y, z: rot.z, w: rot.w });
+
+      const body = world.createRigidBody(rigidBodyDesc);
+      world.createCollider(colliderDesc, body);
+    }
+  });
+}
+
 // ─── Create Player Controller ───────────────────────────────────────────────
 export function createPlayerPhysics(x, y, z) {
   if (!world) return null;
