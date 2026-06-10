@@ -1,112 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>God-Mode World Maker</title>
-  <script>
-    window.addEventListener('error', function(e) {
-      const el = document.createElement('div');
-      el.style.cssText = 'position:absolute;top:0;left:0;z-index:9999;background:red;color:white;padding:20px;font-size:20px;width:100vw;height:100vh;overflow:auto;';
-      el.innerText = 'ERROR: ' + e.message + '\n' + e.filename + ':' + e.lineno + '\n\n' + (e.error ? e.error.stack : '');
-      document.body.appendChild(el);
-    });
-  </script>
-    <link rel="stylesheet" href="./style.css">
+    <title>World Maker - React Transition</title>
   </head>
   <body>
-    <!-- Login Overlay -->
-    <div id="login-screen">
-      <div class="login-box">
-        <h1>World Maker</h1>
-        <p>Enter your name to join the server.</p>
-        <input type="text" id="username" placeholder="Your Name" />
-        <input type="password" id="password" placeholder="God Password (Optional)" />
-        <button id="join-btn">Connect</button>
-      </div>
-    </div>
-
-    <!-- Game Hub Overlay -->
-    <div id="game-hub" style="display: none;">
-      <div class="hub-header">
-        <h1>Welcome, <span id="hub-username">Player</span></h1>
-        <p>Select a world to enter</p>
-      </div>
-      <div class="game-grid">
-        <!-- Hero Game (Main World) -->
-        <div class="game-card hero" data-game="gta">
-          <div class="card-img gta-bg"></div>
-          <div class="card-info">
-            <h2>GTA City</h2>
-            <p>Procedural neon city with drivable cars and dynamic time of day.</p>
-            <button class="play-btn">Play Now</button>
-          </div>
-        </div>
-        
-        <!-- Side Games -->
-        <div class="side-games">
-          <div class="game-card" data-game="sandbox">
-            <div class="card-img sandbox-bg"></div>
-            <div class="card-info">
-              <h3>Flatgrass Sandbox</h3>
-              <p>Build anything with blocks in an infinite empty space.</p>
-              <button class="play-btn">Play</button>
-            </div>
-          </div>
-          
-          <div class="game-card" data-game="shooter">
-            <div class="card-img shooter-bg"></div>
-            <div class="card-info">
-              <h3>1v1 Arena</h3>
-              <p>Fast-paced hitscan PvP combat.</p>
-              <button class="play-btn">Play</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stats Overlay -->
-    <div id="stats-box" style="display: none;">
-      <div id="fps-counter">FPS: 0</div>
-      <div id="resolution-counter">Res: 0x0</div>
-    </div>
-
-    <!-- UI Overlay (crosshair, notifications) -->
-    <div id="ui-layer" style="display: none;">
-      <button id="leave-btn" style="position:absolute; top:20px; right:20px; padding:10px 20px; background:#ef473a; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; pointer-events:auto; z-index:100;">Leave Game</button>
-      <div id="crosshair">+</div>
-      <div id="notifications"></div>
-      <div id="instructions">
-        Click to play.<br/>
-        WASD to move, Mouse to look. <strong>T</strong> = Chat.<br/>
-        <span id="god-instructions" style="display: none;">Left Click to build a block.</span>
-      </div>
-
-      <!-- Universal Chat System -->
-      <div id="chat-panel">
-        <div id="chat-messages"></div>
-        <div id="chat-input-row" style="display:none;">
-          <input type="text" id="chat-input" placeholder="Type a message... (Enter to send, Esc to close)" maxlength="200" autocomplete="off" />
-        </div>
-      </div>
-
-      <!-- Personal Inventory Hotbar -->
-      <div id="inventory-hotbar" style="
-        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 10px; z-index: 1000; pointer-events: auto;
-        background: rgba(10, 15, 30, 0.8); padding: 10px; border-radius: 12px;
-        border: 1px solid rgba(0, 170, 255, 0.3); backdrop-filter: blur(10px);
-        box-shadow: 0 5px 20px rgba(0,0,0,0.8); min-height: 60px; min-width: 300px;
-        align-items: center; justify-content: center;
-      ">
-        <div style="position: absolute; top: -20px; font-size: 10px; color: #00aaff; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">Personal Inventory (Drag & Drop Items Here)</div>
-        <div id="inventory-slots" style="display: flex; gap: 10px;">
-          <!-- Items will be injected here -->
-        </div>
-      </div>
-    </div>
-
-    <script type="module" src="/main.js"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

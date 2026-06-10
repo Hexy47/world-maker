@@ -1,14 +1,15 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import glsl from 'vite-plugin-glsl';
 
 export default defineConfig({
-  plugins: [glsl()],
-  optimizeDeps: {
-    exclude: ['@dimforge/rapier3d-compat']
-  },
+  plugins: [react(), glsl()],
   server: {
-    proxy: {
-      '/socket.io': { target: 'http://localhost:3000', ws: true }
-    }
+    port: 3000,
+    open: true
+  },
+  build: {
+    target: 'esnext',
+    outDir: 'dist'
   }
 });

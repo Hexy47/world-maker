@@ -39,19 +39,18 @@ export class DataTower {
       this.group.add(ring);
     }
 
-    // 4. Scanning Radius Dome (The AOI Zone)
-    const domeGeom = new THREE.SphereGeometry(this.radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    // 4. Scanning Radius (Flat ring on the floor to save FPS)
+    const domeGeom = new THREE.RingGeometry(this.radius - 2, this.radius, 64);
     const domeMat = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
-      wireframe: true,
       transparent: true,
-      opacity: 0.05,
+      opacity: 0.1,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide
     });
     this.domeMesh = new THREE.Mesh(domeGeom, domeMat);
-    // Don't render the dome inside the ground
-    this.domeMesh.position.y = 0;
+    this.domeMesh.rotation.x = -Math.PI / 2; // Lay flat on the ground
+    this.domeMesh.position.y = 0.5; // Slightly above ground to prevent z-fighting
     this.group.add(this.domeMesh);
 
     // 5. Data State

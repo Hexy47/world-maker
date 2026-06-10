@@ -84,10 +84,10 @@ export class Player {
     // Save previous position for interpolation
     this.prevPos.copy(this.currPos);
 
-    if (this.controller && this.body) {
+    if (this.controller && this.collider) {
       // Let Rapier resolve collisions
       this.controller.computeColliderMovement(
-        this.body.collider(0),
+        this.collider,
         desiredMove,
         // Assuming RAPIER is global or we import it later
         window.RAPIER ? window.RAPIER.QueryFilterFlags.EXCLUDE_SENSORS : 0

@@ -123,7 +123,7 @@ export function createPlayerPhysics(x, y, z) {
   const colliderDesc = RAPIER.ColliderDesc.capsule(0.7, 0.4)
     .setFriction(SETTINGS.PLAYER_FRICTION)
     .setRestitution(SETTINGS.PLAYER_RESTITUTION);
-  world.createCollider(colliderDesc, playerBody);
+  const playerCollider = world.createCollider(colliderDesc, playerBody);
 
   const playerController = world.createCharacterController(0.05);
   playerController.setSlideEnabled(true);
@@ -132,7 +132,7 @@ export function createPlayerPhysics(x, y, z) {
   playerController.enableAutostep(0.5, 0.2, true);
   playerController.enableSnapToGround(0.5);
 
-  return { playerBody, playerController };
+  return { playerBody, playerController, playerCollider };
 }
 
 // ─── Hot reload ──────────────────────────────────────────────────────────────
