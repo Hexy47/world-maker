@@ -188,7 +188,7 @@ io.on('connection', (socket) => {
   }
 
   // Ensure latestTelemetry is initialized
-  gameState.latestTelemetry = gameState.latestTelemetry || {};
+  gameState.latestTelemetry = gameState.latestTelemetry || { type: 'init', data: {} };
   const text = String(data.text || '').trim().slice(0, 200);
   
   if (text) {

@@ -14,6 +14,7 @@ import { initPhysics, createPlayerPhysics, stepWorld, addStaticBox, setGravity }
 import { initPostProcessing, initFog, renderFrame, resizeComposer, setBloomStrength, setBloomThreshold } from './src/graphics.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DataTower } from './src/entities/DataTower.js';
 
 let socket;
 let isGod = false;
@@ -154,7 +155,14 @@ document.querySelectorAll('.play-btn').forEach(btn => {
 });
 
 function initThreeJS() {
+  const container = document.getElementById('game-container');
+  
+  // Create camera with standard draw distance
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+  
+  // Set up Audio Listener
+  const audioListener = new THREE.AudioListener();
+  camera.add(audioListener);
   camera.position.y = SETTINGS.EYE_HEIGHT;
 
   scene = new THREE.Scene();
@@ -529,69 +537,120 @@ function loadGTAWorld() {
     }
   }
 
-  // Create two InstancedMeshes (one for dark buildings, one for neon glowing ones)
+  // --- SPATIAL CHUNKING SYSTEM ---
+  const CHUNK_SIZE = 400;
+  const chunks = {};
+
+  let globalDarkIdx = 0;
+  let globalNeonIdx = 0;
+
+  buildingData.forEach((b) => {
+    if (b.isNeon) b.globalIdx = globalNeonIdx++;
+    else b.globalIdx = globalDarkIdx++;
+
+    const cx = Math.floor((b.x + cityExtent) / CHUNK_SIZE);
+    const cz = Math.floor((b.z + cityExtent) / CHUNK_SIZE);
+    const key = `${cx}_${cz}`;
+    if (!chunks[key]) chunks[key] = { dark: [], neon: [] };
+    
+    if (b.isNeon) chunks[key].neon.push(b);
+    else chunks[key].dark.push(b);
+  });
+
   const baseGeom = new THREE.BoxGeometry(1, 1, 1);
   const darkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.3 });
   const neonMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.6, metalness: 0.3 });
-
-  const numDark = buildingData.filter(b => !b.isNeon).length;
-  const numNeon = buildingData.filter(b => b.isNeon).length;
-
-  const darkMesh = new THREE.InstancedMesh(baseGeom, darkMat, numDark);
-  const neonMesh = new THREE.InstancedMesh(baseGeom, neonMat, numNeon);
-  
-  darkMesh.userData.isEditable = true;
-  darkMesh.uuid = 'GTA_DarkBuildings';
-  neonMesh.userData.isEditable = true;
-  neonMesh.uuid = 'GTA_NeonBuildings';
-  
-  darkMesh.castShadow = true; darkMesh.receiveShadow = true;
-  neonMesh.castShadow = true; neonMesh.receiveShadow = true;
-
   const dummy = new THREE.Object3D();
-  let darkIdx = 0, neonIdx = 0;
 
   window.cityBuildingData = []; // Store for physics
+  window.dataTowers = []; // Store the new Infrastructure nodes
 
-  buildingData.forEach(b => {
-    dummy.position.set(b.x, b.y, b.z);
-    dummy.scale.set(b.width, b.height, b.depth);
-    dummy.quaternion.identity();
-    dummy.updateMatrix();
+  Object.entries(chunks).forEach(([chunkKey, chunk]) => {
+    // 1. Spawn a Data Tower at the mathematical center of this chunk
+    const [cxStr, czStr] = chunkKey.split('_');
+    const cx = parseInt(cxStr);
+    const cz = parseInt(czStr);
+    
+    // Calculate exact physical center of this chunk
+    const towerX = cx * CHUNK_SIZE - cityExtent + CHUNK_SIZE / 2;
+    const towerZ = cz * CHUNK_SIZE - cityExtent + CHUNK_SIZE / 2;
+    
+    // Only spawn tower if there are actual buildings in this chunk (don't spawn in empty ocean)
+    if (chunk.dark.length > 0 || chunk.neon.length > 0) {
+      const tower = new DataTower(towerX, towerZ, CHUNK_SIZE / 2);
+      window.dataTowers.push(tower);
+      worldGroup.add(tower.group);
+      objects.push(tower.baseMesh); // Add base to collision raycasting
+      
+      // Add physics collider for the massive tower base
+      addStaticBox(towerX, 50, towerZ, 2, 50, 2);
+    }
+    if (chunk.dark.length > 0) {
+      const darkMesh = new THREE.InstancedMesh(baseGeom, darkMat, chunk.dark.length);
+      darkMesh.userData.isEditable = true;
+      darkMesh.uuid = `GTA_DarkBuildings_${chunkKey}`;
+      // CRITICAL FPS FIX: No dynamic shadows for static city chunks
+      darkMesh.castShadow = false; 
+      darkMesh.receiveShadow = false;
 
-    if (b.isNeon) {
-      let customArr = window.customWorldData?.find(d => d.id === 'GTA_NeonBuildings')?.matrices[neonIdx];
-      if (customArr) {
-        dummy.matrix.fromArray(customArr);
-        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-      }
-      neonMesh.setMatrixAt(neonIdx, dummy.matrix);
-      neonMesh.setColorAt(neonIdx, b.color);
-      neonIdx++;
-    } else {
-      let customArr = window.customWorldData?.find(d => d.id === 'GTA_DarkBuildings')?.matrices[darkIdx];
-      if (customArr) {
-        dummy.matrix.fromArray(customArr);
-        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-      }
-      darkMesh.setMatrixAt(darkIdx, dummy.matrix);
-      darkMesh.setColorAt(darkIdx, b.color);
-      darkIdx++;
+      chunk.dark.forEach((b, idx) => {
+        dummy.position.set(b.x, b.y, b.z);
+        dummy.scale.set(b.width, b.height, b.depth);
+        dummy.quaternion.identity();
+        dummy.updateMatrix();
+
+        let customArr = window.customWorldData?.find(d => d.id === 'GTA_DarkBuildings')?.matrices[b.globalIdx];
+        if (customArr) {
+          dummy.matrix.fromArray(customArr);
+          dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+        }
+        
+        darkMesh.setMatrixAt(idx, dummy.matrix);
+        darkMesh.setColorAt(idx, b.color);
+
+        window.cityBuildingData.push({
+          x: b.x, y: b.y, z: b.z,
+          hw: b.width/2, hh: b.height/2, hd: b.depth/2
+        });
+        addStaticBox(b.x, b.y, b.z, b.width/2, b.height/2, b.depth/2);
+      });
+      worldGroup.add(darkMesh);
+      objects.push(darkMesh);
     }
 
-    // Save collider info (Rapier uses half-extents)
-    window.cityBuildingData.push({
-      x: b.x, y: b.y, z: b.z,
-      hw: b.width/2, hh: b.height/2, hd: b.depth/2
-    });
-    
-    // Create physical box
-    addStaticBox(b.x, b.y, b.z, b.width/2, b.height/2, b.depth/2);
-  });
+    if (chunk.neon.length > 0) {
+      const neonMesh = new THREE.InstancedMesh(baseGeom, neonMat, chunk.neon.length);
+      neonMesh.userData.isEditable = true;
+      neonMesh.uuid = `GTA_NeonBuildings_${chunkKey}`;
+      // CRITICAL FPS FIX: No dynamic shadows for static city chunks
+      neonMesh.castShadow = false; 
+      neonMesh.receiveShadow = false;
 
-  worldGroup.add(darkMesh);
-  worldGroup.add(neonMesh);
-  objects.push(darkMesh, neonMesh);
+      chunk.neon.forEach((b, idx) => {
+        dummy.position.set(b.x, b.y, b.z);
+        dummy.scale.set(b.width, b.height, b.depth);
+        dummy.quaternion.identity();
+        dummy.updateMatrix();
+
+        let customArr = window.customWorldData?.find(d => d.id === 'GTA_NeonBuildings')?.matrices[b.globalIdx];
+        if (customArr) {
+          dummy.matrix.fromArray(customArr);
+          dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+        }
+        
+        neonMesh.setMatrixAt(idx, dummy.matrix);
+        neonMesh.setColorAt(idx, b.color);
+        
+        window.cityBuildingData.push({
+          x: b.x, y: b.y, z: b.z,
+          hw: b.width/2, hh: b.height/2, hd: b.depth/2
+        });
+        addStaticBox(b.x, b.y, b.z, b.width/2, b.height/2, b.depth/2);
+      });
+      worldGroup.add(neonMesh);
+      objects.push(neonMesh);
+    }
+  });
 
   // Load custom GLTF models from server (outside the loop!)
   if (window.customWorldData) {
@@ -930,30 +989,48 @@ function animate() {
   const theta = THREE.MathUtils.degToRad(azimuth);
 
   window.sun.setFromSphericalCoords(1, phi, theta);
-  window.sky.material.uniforms['sunPosition'].value.copy(window.sun);
+  if (window.sky) {
+    window.sky.material.uniforms['sunPosition'].value.copy(window.sun);
+  }
   
   // Change sun color and intensity based on sunset/night
   if (elevation > 0) {
-    window.sky.visible = true;
-    window.sunLight.position.copy(window.sun).multiplyScalar(500);
-    window.sunLight.intensity = Math.max(0.1, Math.sin(THREE.MathUtils.degToRad(elevation)) * 2.5);
-    window.sunLight.color.setHSL(0.1 + (elevation/90)*0.1, 1.0, 0.6 + (elevation/90)*0.4);
-    window.ambientLight.color.setHex(0xffffff);
-    window.ambientLight.intensity = 0.5;
+    if (window.sky) window.sky.visible = true;
+    if (window.sunLight) {
+       window.sunLight.position.copy(window.sun).multiplyScalar(500);
+       window.sunLight.intensity = Math.max(0.1, Math.sin(THREE.MathUtils.degToRad(elevation)) * 2.5);
+       window.sunLight.color.setHSL(0.1 + (elevation/90)*0.1, 1.0, 0.6 + (elevation/90)*0.4);
+    }
+    if (window.ambientLight) {
+       window.ambientLight.color.setHex(0xffffff);
+       window.ambientLight.intensity = 0.5;
+    }
   } else {
     // Night time moonlight (Mirror sun to be above the horizon)
-    window.sky.visible = false; // Hide the pitch black shader so stars are visible!
-    window.sunLight.position.set(-window.sun.x, Math.abs(window.sun.y), -window.sun.z).multiplyScalar(500);
-    window.sunLight.intensity = 0.5;
-    window.sunLight.color.setHex(0x77aaff);
-    window.ambientLight.color.setHex(0x444466);
-    window.ambientLight.intensity = 0.8;
+    if (window.sky) window.sky.visible = false; // Hide the pitch black shader so stars are visible!
+    if (window.sunLight) {
+       window.sunLight.position.set(-window.sun.x, Math.abs(window.sun.y), -window.sun.z).multiplyScalar(500);
+       window.sunLight.intensity = 0.5;
+       window.sunLight.color.setHex(0x77aaff);
+    }
+    if (window.ambientLight) {
+       window.ambientLight.color.setHex(0x444466);
+       window.ambientLight.intensity = 0.8;
+    }
   }
 
   // Update Game Logic
-  const time = performance.now();
+  const time = Date.now();
+  
+  // Animate Infrastructure Data Towers
+  if (window.dataTowers) {
+    const timeSec = time * 0.001;
+    window.dataTowers.forEach(tower => tower.update(timeSec));
+  }
+  
+  const timePerf = performance.now();
   frameCount++;
-  if (time - lastFpsTime >= 1000) {
+  if (timePerf - lastFpsTime >= 1000) {
     fpsCounter.innerText = `FPS: ${frameCount}`;
     
     // Broadcast telemetry to the server so the AI Launcher can see it
@@ -966,7 +1043,7 @@ function animate() {
     }
 
     frameCount = 0;
-    lastFpsTime = time;
+    lastFpsTime = timePerf;
   }
 
   // Day/Night Cycle for GTA World
@@ -1091,165 +1168,121 @@ function toggleGodPanel() {
   if (godPanelOpen) controls.unlock();
 }
 
-// ─── DRAG AND DROP PIPELINE ──────────────────────────────────────────────────
+// ─── INVENTORY SYSTEM & DRAG-AND-DROP ─────────────────────────────────────────
+window.personalInventory = [];
+
+function renderInventoryUI() {
+  const container = document.getElementById('inventory-slots');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  window.personalInventory.forEach((item, index) => {
+    const slot = document.createElement('div');
+    slot.className = 'inventory-slot';
+    
+    if (item.type === 'texture') {
+      const img = document.createElement('img');
+      img.src = item.url;
+      slot.appendChild(img);
+    }
+    
+    const label = document.createElement('span');
+    label.innerText = item.file.name.substring(0, 10) + '...';
+    slot.appendChild(label);
+    
+    slot.onclick = () => {
+      useInventoryItem(item);
+    };
+    
+    container.appendChild(slot);
+  });
+}
+
+function useInventoryItem(item) {
+  if (item.type === 'texture') {
+    showNotification(`AI analyzing texture ${item.file.name}...`);
+    import('./src/systems/TextureAI.js').then(({ applyTextureAI }) => {
+       applyTextureAI(item.file, scene, showNotification);
+    });
+    return;
+  }
+  
+  // It's a 3D Model
+  showNotification(`Spawning ${item.file.name}...`);
+  const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
+  
+  const setupModel = (model) => {
+    model.userData.isEditable = true;
+    model.userData.modelName = item.file.name;
+    model.uuid = THREE.MathUtils.generateUUID();
+    model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
+    model.updateMatrixWorld();
+
+    const defaultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7 });
+    model.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (!item.file.name.endsWith('.glb')) {
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(m => defaultMat);
+          } else if (!child.material) {
+            child.material = defaultMat;
+          }
+        }
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3(); box.getSize(size);
+    
+    if (Math.max(size.x, size.y, size.z) > 40) {
+      import('./src/physics.js').then(({ createTrimeshCollider }) => {
+        createTrimeshCollider(model);
+      });
+      showNotification(`Generated Trimesh Physics for ${item.file.name}`);
+    } else {
+      const center = new THREE.Vector3(); box.getCenter(center);
+      import('./src/physics.js').then(({ addStaticBox }) => {
+         addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
+      });
+    }
+
+    worldGroup.add(model);
+    objects.push(model);
+    window.dispatchEvent(new Event('publishWorld'));
+  };
+
+  if (item.file.name.endsWith('.glb')) {
+    new GLTFLoader().load(item.url, (gltf) => setupModel(gltf.scene));
+  } else if (item.file.name.endsWith('.obj')) {
+    import('three/examples/jsm/loaders/OBJLoader.js').then(({ OBJLoader }) => {
+       new OBJLoader().load(item.url, setupModel);
+    });
+  } else if (item.file.name.endsWith('.fbx')) {
+    import('three/examples/jsm/loaders/FBXLoader.js').then(({ FBXLoader }) => {
+       new FBXLoader().load(item.url, setupModel);
+    });
+  }
+}
+
 window.addEventListener('dragover', (e) => e.preventDefault());
 
 window.addEventListener('drop', (event) => {
   event.preventDefault();
-  if (!playerIsGod) return;
-
+  
   const file = event.dataTransfer.files[0];
   if (!file) return;
 
-  if (file.name.endsWith('.glb')) {
-    showNotification(`Importing ${file.name}...`);
-    const url = URL.createObjectURL(file);
-    new GLTFLoader().load(
-      url, 
-      (gltf) => {
-        const model = gltf.scene;
-        model.userData.isEditable = true;
-        model.userData.modelName = file.name;
-        model.uuid = THREE.MathUtils.generateUUID();
-
-        // Spawn in front of player
-        const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
-        model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
-        model.updateMatrixWorld();
-
-        // Enable shadows
-        model.traverse(child => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-
-        // Calculate bounds for physics
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3(); box.getSize(size);
-        
-        // If it's huge (like a mountain > 40 units), use Trimesh!
-        if (Math.max(size.x, size.y, size.z) > 40) {
-          import('./src/physics.js').then(({ createTrimeshCollider }) => {
-            createTrimeshCollider(model);
-          });
-          showNotification(`Generated Trimesh Physics for ${file.name}`);
-        } else {
-          // Normal static box for now
-          const center = new THREE.Vector3(); box.getCenter(center);
-          import('./src/physics.js').then(({ addStaticBox }) => {
-             addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
-          });
-        }
-
-        worldGroup.add(model);
-        objects.push(model);
-        URL.revokeObjectURL(url);
-        
-        // Auto-publish so AI and other players see it
-        window.dispatchEvent(new Event('publishWorld'));
-      }, 
-      undefined, 
-      (error) => {
-        showNotification(`Failed to load ${file.name}`);
-        URL.revokeObjectURL(url);
-      }
-    );
-  } 
-  else if (file.name.endsWith('.obj')) {
-    showNotification(`Importing ${file.name}...`);
-    const url = URL.createObjectURL(file);
-    import('three/examples/jsm/loaders/OBJLoader.js').then(({ OBJLoader }) => {
-       new OBJLoader().load(url, (model) => {
-          model.userData.isEditable = true;
-          model.userData.modelName = file.name;
-          model.uuid = THREE.MathUtils.generateUUID();
-
-          // Spawn in front of player
-          const spawnPos = localPlayer ? localPlayer.body.translation() : {x:0, y:10, z:0};
-          model.position.set(spawnPos.x, spawnPos.y + 2, spawnPos.z);
-          model.updateMatrixWorld();
-
-          // Enable shadows and default material if missing
-          const defaultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7 });
-          model.traverse(child => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-              if (Array.isArray(child.material)) {
-                child.material = child.material.map(m => defaultMat);
-              } else if (!child.material) {
-                child.material = defaultMat;
-              }
-            }
-          });
-
-          // Physics setup
-          const box = new THREE.Box3().setFromObject(model);
-          const size = new THREE.Vector3(); box.getSize(size);
-          
-          if (Math.max(size.x, size.y, size.z) > 40) {
-            import('./src/physics.js').then(({ createTrimeshCollider }) => {
-              createTrimeshCollider(model);
-            });
-            showNotification(`Generated Trimesh Physics for ${file.name}`);
-          } else {
-            const center = new THREE.Vector3(); box.getCenter(center);
-            import('./src/physics.js').then(({ addStaticBox }) => {
-               addStaticBox(center.x, center.y, center.z, size.x/2, size.y/2, size.z/2);
-            });
-          }
-
-          worldGroup.add(model);
-          objects.push(model);
-          URL.revokeObjectURL(url);
-          window.dispatchEvent(new Event('publishWorld'));
-       }, undefined, (error) => {
-          showNotification(`Failed to load ${file.name}`);
-          URL.revokeObjectURL(url);
-       });
-    });
+  if (file.name.endsWith('.gltf')) {
+    showNotification("Error: Please drop a .glb file instead of .gltf.");
+    return;
   }
-  else if (file.name.endsWith('.gltf')) {
-    showNotification("Error: Please drop a .glb file. Standard .gltf files require their .bin and textures.");
-  }
-  else if (file.type.startsWith('image/')) {
-    // 1. Direct Material Painting: Check if user dropped the texture ON an object
-    const mouse = new THREE.Vector2();
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    
-    const intersects = raycaster.intersectObjects(worldGroup.children, true);
-    
-    if (intersects.length > 0 && intersects[0].object.isMesh) {
-      const hitObj = intersects[0].object;
-      showNotification(`Applying texture to ${hitObj.name || 'object'}...`);
-      const url = URL.createObjectURL(file);
-      new THREE.TextureLoader().load(url, (texture) => {
-        texture.flipY = false;
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        
-        if (Array.isArray(hitObj.material)) {
-           hitObj.material = hitObj.material.map(m => {
-             const c = m.clone(); c.map = texture; c.needsUpdate = true; return c;
-           });
-        } else {
-           hitObj.material = hitObj.material.clone();
-           hitObj.material.map = texture;
-           hitObj.material.needsUpdate = true;
-        }
-      });
-      return;
-    }
 
-    // 2. AI Semantic Decorator: If dropped in the sky, let the AI decide where it goes based on tags
-    showNotification(`AI analyzing texture ${file.name}...`);
-    import('./src/systems/TextureAI.js').then(({ applyTextureAI }) => {
-       applyTextureAI(file, scene, showNotification);
-    });
-  }
+  const url = URL.createObjectURL(file);
+  const type = file.type.startsWith('image/') ? 'texture' : 'model';
+  
+  window.personalInventory.push({ file, url, type });
+  renderInventoryUI();
+  showNotification(`Added ${file.name} to Inventory!`);
 });

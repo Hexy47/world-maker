@@ -450,3 +450,45 @@ canvas {
 #instructions strong, #instructions b {
   color: var(--accent);
 }
+
+/* Tool Active State */
+.active-tool {
+  box-shadow: inset 0 0 10px #fff, 0 0 15px var(--accent) !important;
+  border-color: #fff !important;
+  color: #fff !important;
+  filter: brightness(1.5);
+}
+
+/* Inventory Slots */
+.inventory-slot {
+  width: 60px; height: 60px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  cursor: pointer;
+  transition: 0.2s;
+  color: white;
+  font-size: 10px;
+  text-align: center;
+  overflow: hidden;
+  position: relative;
+}
+.inventory-slot:hover {
+  background: rgba(0, 170, 255, 0.3);
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+  transform: translateY(-5px);
+}
+.inventory-slot img {
+  width: 100%; height: 100%; object-fit: cover;
+  position: absolute; top: 0; left: 0; z-index: 1;
+  opacity: 0.7;
+}
+.inventory-slot span {
+  z-index: 2;
+  text-shadow: 1px 1px 3px #000;
+  word-wrap: break-word;
+  padding: 2px;
+}

@@ -224,10 +224,19 @@ export class UIManager {
          const btn = document.getElementById(`tool-${tool}`);
          if (btn) {
            btn.addEventListener('click', () => {
+             tools.forEach(t => {
+                const b = document.getElementById(`tool-${t}`);
+                if (b) b.classList.remove('active-tool');
+             });
+             btn.classList.add('active-tool');
              window.dispatchEvent(new CustomEvent('setToolMode', { detail: tool }));
            });
          }
       });
+      
+      // Default to transform active
+      const defaultBtn = document.getElementById('tool-transform');
+      if (defaultBtn) defaultBtn.classList.add('active-tool');
     }, 100);
     studioUI.appendChild(publishBtn);
 
